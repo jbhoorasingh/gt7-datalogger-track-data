@@ -1,0 +1,30 @@
+# Every contribution is checked with the APP's own validator, not a copy of
+# it. A second implementation would drift, and the only question that matters
+# here is whether the datalogger will accept the file.
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the bundle format's validator
+        run: |
+          pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
+
+      - name: Validate every bundle
+        run: python tools/validate.py
+
+      - name: index.json must match the bundles
+        run: python tools/build_index.py --check

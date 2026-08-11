@@ -1,0 +1,85 @@
+# Builds the download: one zip holding every bundle, the index, and the
+# script that loads them into a running datalogger.
+#
+# Two triggers on purpose. Every push to main publishes a rolling artifact so
+# there is always something current to grab; a tag cuts a release, which is
+# what a README should link to and what an install script should pin.
+name: pack
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the bundle format's validator
+        run: |
+          pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
+
+      - name: Never ship what would not validate
+        run: |
+          python tools/validate.py
+          python tools/build_index.py --check
+
+      - name: Assemble the pack
+        id: pack
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          case "$GITHUB_REF" in
+            refs/tags/*) name="gt7-track-data-${version}" ;;
+            *)           name="gt7-track-data-main" ;;
+          esac
+          mkdir -p "pack/$name/tracks"
+          cp tracks/*.json "pack/$name/tracks/"
+          cp index.json catalog/tracks.json "pack/$name/"
+          cp tools/import_into_app.py "pack/$name/"
+          cp PACK_README.md "pack/$name/README.md"
+          # A manifest so a pack can say what it is once it has been unzipped
+          # and separated from the release it came from.
+          python - "$name" <<'PY'
+          import json, pathlib, sys, os
+          name = sys.argv[1]
+          root = pathlib.Path("pack") / name
+          index = json.loads((root / "index.json").read_text())
+          manifest = {
+              "pack": name,
+              "ref": os.environ.get("GITHUB_REF_NAME", ""),
+              "commit": os.environ.get("GITHUB_SHA", ""),
+              "bundle_format_version": index["bundle_format_version"],
+              "counts": index["counts"],
+              "tracks": sorted(p.name for p in (root / "tracks").glob("*.json")),
+          }
+          (root / "MANIFEST.json").write_text(json.dumps(manifest, indent=1) + "\n")
+          print(f"{manifest['counts']['surveyed']} bundles, "
+                f"{manifest['counts']['points']:,} m of border")
+          PY
+          (cd pack && zip -qr "../$name.zip" "$name")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          ls -lh "$name.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.name }}
+          path: ${{ steps.pack.outputs.name }}.zip
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pack.outputs.name }}.zip
+          generate_release_notes: true

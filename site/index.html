@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GT7 track data</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>GT7 track data</h1>
+      <p id="summary" class="dim">loading…</p>
+      <p class="dim">
+        Surveyed border geometry for Gran Turismo 7 circuits, contributed by people
+        driving them. Pick a track to inspect what has actually been mapped —
+        the gaps are as informative as the lines.
+        <a href="https://github.com/jbhoorasingh/gt7-datalogger-track-data">Repository</a>
+      </p>
+    </header>
+
+    <main>
+      <aside>
+        <div class="controls">
+          <input id="search" type="search" placeholder="filter tracks…" aria-label="Filter tracks" />
+          <label class="check">
+            <input id="only-surveyed" type="checkbox" checked />
+            surveyed only
+          </label>
+        </div>
+        <ul id="list"></ul>
+      </aside>
+
+      <section id="viewer">
+        <div id="empty" class="dim">Pick a surveyed track on the left.</div>
+        <div id="detail" hidden>
+          <h2 id="track-name"></h2>
+          <p id="track-official" class="dim"></p>
+          <div id="stats" class="stats"></div>
+          <canvas id="map" width="900" height="900"></canvas>
+          <div class="legend">
+            <span><i style="background:#60a5fa"></i>left border</span>
+            <span><i style="background:#f472b6"></i>right border</span>
+            <span><i style="background:#a855f7"></i>run-off limit</span>
+            <span><i style="background:#ef4444"></i>wall</span>
+            <span><i style="background:#facc15"></i>corner apex</span>
+            <span><i style="background:#e5e7eb"></i>start/finish</span>
+          </div>
+          <p class="dim" id="hint"></p>
+          <p><a id="download" download>Download this bundle (JSON)</a></p>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

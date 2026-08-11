@@ -1,0 +1,47 @@
+# The inspection site. Assembled rather than served from the repo root so the
+# page sits at / and the bundles it fetches sit beside it, which keeps every
+# path in the site relative and makes it work just as well opened locally.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble _site
+        run: |
+          set -euo pipefail
+          mkdir -p _site/tracks
+          cp site/index.html site/app.js site/style.css _site/
+          cp index.json _site/
+          cp tracks/*.json _site/tracks/ 2>/dev/null || echo "no bundles yet"
+          # Jekyll would otherwise try to process this and drop the JSON.
+          touch _site/.nojekyll
+          du -sh _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
