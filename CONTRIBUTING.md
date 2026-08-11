@@ -24,9 +24,9 @@ thing in a bundle after the borders themselves.
 
 ## 3. Add it
 
-```bash
-pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
+Nothing to install — the tools are standard-library Python 3.12.
 
+```bash
 python tools/add_bundle.py ~/Downloads/deep-forest-raceway.json
 # ...or pull everything straight out of a running app:
 python tools/add_bundle.py --from-app http://gt7.local:8000
@@ -42,8 +42,9 @@ Then open a pull request.
 
 ## 4. What CI checks
 
-- The app's own validator accepts the document (`tools/validate.py`). The
-  validator is imported from the app rather than copied, so it cannot drift.
+- The document is a well-formed bundle (`tools/validate.py`). The format is
+  defined by `tools/bundle_format.py` — v4 lives here rather than in the app,
+  which reads and writes v3; see that module's header for why.
 - It is format v4 and names a configuration that exists in the catalog.
 - The filename matches that configuration.
 - The file is in canonical form — `python tools/validate.py --fix` writes it.
