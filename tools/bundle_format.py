@@ -26,6 +26,12 @@ v4 exists because v3 cannot describe what a shared repository needs:
   * **`corners` and `sections`** — authored rather than surveyed, so they are
     kept through a merge instead of being recomputed from evidence.
 
+Two implementations of one format is exactly the drift risk the "defer to
+the app's validator" idea existed to prevent. It is guarded rather than
+avoided: CI installs the app and asserts it still accepts every bundle this
+repository ships, unchanged (`tools/check_app_agrees.py`). The day the two
+definitions disagree, that job goes red and names the file.
+
 What this checks is the format. What `validate.py` checks on top of it is
 this repository's policy — a confirmed layout that exists in the catalog, a
 matching filename, canonical on-disk form.
