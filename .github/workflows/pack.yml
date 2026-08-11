@@ -25,10 +25,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the bundle format's validator
-        run: |
-          pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
-
       - name: Never ship what would not validate
         run: |
           python tools/validate.py

@@ -20,18 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import canonical  # noqa: E402
 from build_index import configurations, slugify  # noqa: E402
+from bundle_format import merge_edges, merge_finish, validate_document  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACKS = ROOT / "tracks"
 CATALOG = ROOT / "catalog" / "tracks.json"
-
-try:
-    from app.processing.track_bundle import merge_edges, merge_finish, validate_document
-except ImportError:  # pragma: no cover
-    print("needs the app package: pip install "
-          '"gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger'
-          '@main#subdirectory=backend"', file=sys.stderr)
-    raise SystemExit(2) from None
 
 
 def target_name(doc: dict) -> str:
