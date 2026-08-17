@@ -8,6 +8,13 @@ manual marking, because the game reports both as plain tarmac. A few laps
 gives you the shape; the Survey view's completeness card tells you where the
 gaps still are.
 
+Start from what is already shared rather than from zero: newer dataloggers
+list this repository in the Tracks view's **Shared bundles** panel and pull a
+circuit's bundle straight in (older ones: **Import bundle…** with a file from
+the [site](https://jbhoorasingh.github.io/gt7-datalogger-track-data/)). Your
+laps then extend the shared record, and contributing back
+sends only what you added.
+
 ## 2. Confirm the official layout
 
 Open **Tracks**, find the circuit, and confirm the suggested official layout.
@@ -43,8 +50,9 @@ Then open a pull request.
 ## 4. What CI checks
 
 - The document is a well-formed bundle (`tools/validate.py`). The format is
-  defined by `tools/bundle_format.py` — v4 lives here rather than in the app,
-  which reads and writes v3; see that module's header for why.
+  defined by `tools/bundle_format.py` — this repository's own
+  standard-library copy of v4, which the app (datalogger 0.5+) reads and
+  writes too; see that module's header for how the two relate.
 - It is format v4 and names a configuration that exists in the catalog.
 - The filename matches that configuration.
 - The file is in canonical form — `python tools/validate.py --fix` writes it.
@@ -79,6 +87,21 @@ python tools/build_index.py
 The merge is defined by the format (each source's own highest run count wins,
 hand-marked kinds outrank inferred ones) and it is idempotent, so replaying
 your export onto the updated file is always correct and never double-counts.
+
+## Updating a track that is already here
+
+Same commands — there is no separate update path. `add_bundle.py` merges your
+document into the file on `main`: the voting merge keeps each source's own
+highest run count, so it never double-counts your earlier contributions, and
+hand-labelled corners already in the repository are kept unless the file has
+none. The round trip is the intended workflow:
+
+1. Pull the circuit's shared bundle in the app (Tracks → **Shared bundles**),
+   or import it from the pack.
+2. Drive — more laps, missing borders, corner labels.
+3. `python tools/add_bundle.py --from-app http://gt7.local:8000`, rebuild the
+   index, open a pull request. The diff is only the metres and votes you
+   added, which is what makes it reviewable.
 
 ## Reviewing
 
