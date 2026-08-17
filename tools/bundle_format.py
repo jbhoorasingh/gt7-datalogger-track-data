@@ -1,10 +1,16 @@
-"""The track bundle format, version 4 — as defined by THIS repository.
+"""The track bundle format, version 4 — this repository's own copy.
 
-The original plan was to defer to the app's own validator, on the principle
-that a second implementation would drift from what the datalogger accepts.
-The principle is right and the premise was wrong: the app has no validator to
-import, and — the part that settles it — the app has no v4. It reads and
-writes v3, and v3 cannot describe what a shared repository needs:
+The app defines v4 too: since datalogger 0.5 its `app/processing/track_bundle.py`
+reads and writes the same documents, and its import endpoint accepts every
+version from 1 up, upgrading in place. (Earlier revisions of this header
+predate that — the format landed here first, and the app adopted it.) The
+definition is still duplicated here on purpose: this repository's whole
+toolchain is standard-library Python, and making "open a pull request"
+require a datalogger checkout would be the wrong dependency in the wrong
+direction. If the two implementations ever disagree, the app's module is
+what the app does, and this module is what this repository accepts.
+
+v4 exists because v3 cannot describe what a shared repository needs:
 
   * **Votes are keyed by source first.** In v3 a cell's votes are
     `{kind: [count, last_run]}`, counted per run. Run ordinals are local to
@@ -19,11 +25,6 @@ writes v3, and v3 cannot describe what a shared repository needs:
     bundle without it, because a typed track name cannot place one.
   * **`corners` and `sections`** — authored rather than surveyed, so they are
     kept through a merge instead of being recomputed from evidence.
-
-So the format lives here, and this module is its definition: the constants,
-the vote-resolution rule, the merge, and the validator. The app can still
-load a v4 document's geometry; it is the vote structure it does not yet
-understand.
 
 What this checks is the format. What `validate.py` checks on top of it is
 this repository's policy — a confirmed layout that exists in the catalog, a
@@ -396,12 +397,14 @@ def validate_document(doc: Any) -> dict[str, Any]:
                          "does not know")
     if version < BUNDLE_VERSION:
         # No upgrade path here on purpose. v1-v3 count votes per run with no
-        # source id, and there is no honest way to invent the id those counts
-        # belong to — a wrong one would merge two people's evidence as if it
-        # were one person's.
+        # source id, and inventing the id those counts belong to is a merge
+        # decision, not a format one. The app makes it on import (it attributes
+        # a pre-v4 file to a stable synthetic source), so the remedy is to
+        # round-trip the file through a datalogger and export it again.
         raise ValueError(f"is format v{version}; this repository stores "
                          f"v{BUNDLE_VERSION}. v{version} has no source id on "
-                         "its votes, so it cannot be upgraded here")
+                         "its votes — import it into a datalogger (which "
+                         "upgrades it) and export it again")
 
     problems: list[str] = []
     meta = doc.get("meta")
