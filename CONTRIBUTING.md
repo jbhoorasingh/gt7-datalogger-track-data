@@ -58,6 +58,11 @@ Then open a pull request.
 - The file is in canonical form — `python tools/validate.py --fix` writes it.
 - `index.json` matches the bundles — `python tools/build_index.py` rebuilds it.
 
+A separate `app-agrees` job installs the datalogger and checks it still
+accepts every bundle here unchanged. If only that job is red, nothing is
+wrong with your pull request: the format has moved in the app and this
+repository has not caught up yet.
+
 ## Canonical form, and why
 
 The app writes bundles minified: one 700 kB line. That is right for a file a

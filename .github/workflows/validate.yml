@@ -1,12 +1,20 @@
 # Every contribution is checked against the bundle format this repository
-# defines (tools/bundle_format.py). Nothing to install: the format is v4 and
-# the app reads v3, so there is no app-side validator to defer to.
+# defines (tools/bundle_format.py), on a bare Python with nothing installed.
+#
+# The app implements the same format, so the two can drift. `app-agrees`
+# is the guard for that, and it is a SEPARATE job on purpose: it installs the
+# app from another repository's default branch, and a change made over there
+# must not read as a contributor's pull request being broken.
 name: validate
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # The app moves on its own schedule, and drift that nobody has opened a
+    # pull request to notice is exactly the drift worth catching.
+    - cron: "0 7 * * 1"
   workflow_dispatch:
 
 jobs:
@@ -24,3 +32,20 @@ jobs:
 
       - name: index.json must match the bundles
         run: python tools/build_index.py --check
+
+  app-agrees:
+    name: the app still accepts what we ship
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the app
+        run: |
+          pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
+
+      - name: Hand every bundle to the app's own validator
+        run: python tools/check_app_agrees.py
