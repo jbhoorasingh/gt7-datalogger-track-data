@@ -4,8 +4,8 @@
  "bundle_format_version": 4,
  "counts": {
   "configurations": 121,
-  "surveyed": 4,
-  "points": 17114,
+  "surveyed": 5,
+  "points": 19469,
   "corners_labelled": 7
  },
  "unmatched_bundles": [],
@@ -78,7 +78,20 @@
    "type": "original",
    "reverse": false,
    "slug": "alsace-test-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/alsace-test-course.json",
+    "track": "Alsace - Test Course",
+    "points": 2355,
+    "manual_points": 512,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 6,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-08-18T16:07:29.923237+00:00",
+    "bytes": 369853
+   }
   },
   {
    "official_id": "131d9e",
