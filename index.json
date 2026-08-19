@@ -4,9 +4,9 @@
  "bundle_format_version": 4,
  "counts": {
   "configurations": 121,
-  "surveyed": 6,
-  "points": 22900,
-  "corners_labelled": 7
+  "surveyed": 7,
+  "points": 27862,
+  "corners_labelled": 22
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -90,7 +90,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-18T16:07:29.923237+00:00",
-    "bytes": 369853
+    "bytes": 372231
    }
   },
   {
@@ -243,7 +243,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-12T04:39:48.436127+00:00",
-    "bytes": 545412
+    "bytes": 548579
    }
   },
   {
@@ -284,7 +284,7 @@
     "corners": 7,
     "sections": 0,
     "updated_at": "2026-08-12T04:39:46.149796+00:00",
-    "bytes": 857945
+    "bytes": 862633
    }
   },
   {
@@ -773,7 +773,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-12T04:39:49.917111+00:00",
-    "bytes": 681286
+    "bytes": 685722
    }
   },
   {
@@ -842,7 +842,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-17T20:54:42.705538+00:00",
-    "bytes": 779317
+    "bytes": 784251
    }
   },
   {
@@ -1373,7 +1373,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-18T19:30:22.338865+00:00",
-    "bytes": 544039
+    "bytes": 547496
    }
   },
   {
@@ -1388,7 +1388,20 @@
    "type": "original",
    "reverse": false,
    "slug": "sardegna-road-track-a",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/sardegna-road-track-a.json",
+    "track": "Sardegna - Road Track - A",
+    "points": 4962,
+    "manual_points": 4862,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 15,
+    "sections": 0,
+    "updated_at": "2026-08-19T19:52:16.585935+00:00",
+    "bytes": 759020
+   }
   },
   {
    "official_id": "630793",
