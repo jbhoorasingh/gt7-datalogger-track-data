@@ -4,9 +4,9 @@
  "bundle_format_version": 4,
  "counts": {
   "configurations": 121,
-  "surveyed": 6,
-  "points": 22900,
-  "corners_labelled": 7
+  "surveyed": 7,
+  "points": 27862,
+  "corners_labelled": 22
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -1388,7 +1388,20 @@
    "type": "original",
    "reverse": false,
    "slug": "sardegna-road-track-a",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/sardegna-road-track-a.json",
+    "track": "Sardegna - Road Track - A",
+    "points": 4962,
+    "manual_points": 4862,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 15,
+    "sections": 0,
+    "updated_at": "2026-08-19T19:52:16.585935+00:00",
+    "bytes": 753971
+   }
   },
   {
    "official_id": "630793",

@@ -57,7 +57,7 @@ AUTO_KINDS = ("auto", "straddle")  # inferred; "auto" is transition-derived
 KIND_ORDER = MANUAL_KINDS + AUTO_KINDS
 
 SIDES = ("L", "R")
-DIRECTIONS = ("left", "right")
+DIRECTIONS = ("L", "R")
 
 # Headings are unit vectors stored to 5 dp, so honest rounding moves the
 # magnitude by ~1e-5. A thousandth fails a vector that was never normalised
