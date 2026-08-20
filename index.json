@@ -4,9 +4,9 @@
  "bundle_format_version": 4,
  "counts": {
   "configurations": 121,
-  "surveyed": 7,
-  "points": 27862,
-  "corners_labelled": 22
+  "surveyed": 9,
+  "points": 40456,
+  "corners_labelled": 38
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -90,7 +90,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-18T16:07:29.923237+00:00",
-    "bytes": 369853
+    "bytes": 372231
    }
   },
   {
@@ -243,7 +243,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-12T04:39:48.436127+00:00",
-    "bytes": 545412
+    "bytes": 548579
    }
   },
   {
@@ -284,7 +284,7 @@
     "corners": 7,
     "sections": 0,
     "updated_at": "2026-08-12T04:39:46.149796+00:00",
-    "bytes": 857945
+    "bytes": 862633
    }
   },
   {
@@ -733,7 +733,20 @@
    "type": "real",
    "reverse": false,
    "slug": "daytona-road-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/daytona-road-course.json",
+    "track": "Daytona Road Course",
+    "points": 5820,
+    "manual_points": 5775,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 12,
+    "sections": 0,
+    "updated_at": "2026-08-20T02:33:25.371038+00:00",
+    "bytes": 892228
+   }
   },
   {
    "official_id": "d93f3a",
@@ -747,7 +760,20 @@
    "type": "real",
    "reverse": false,
    "slug": "daytona-tri-oval",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/daytona-tri-oval.json",
+    "track": "Daytona Tri-Oval",
+    "points": 6774,
+    "manual_points": 6774,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 4,
+    "sections": 2,
+    "updated_at": "2026-08-20T02:19:12.048482+00:00",
+    "bytes": 1035848
+   }
   },
   {
    "official_id": "0457d4",
@@ -772,8 +798,8 @@
     "finish_crossings": 5,
     "corners": 0,
     "sections": 0,
-    "updated_at": "2026-08-12T04:39:49.917111+00:00",
-    "bytes": 681286
+    "updated_at": "2026-08-19T17:59:34.081317+00:00",
+    "bytes": 685722
    }
   },
   {
@@ -841,8 +867,8 @@
     "finish_crossings": 12,
     "corners": 0,
     "sections": 0,
-    "updated_at": "2026-08-17T20:54:42.705538+00:00",
-    "bytes": 779317
+    "updated_at": "2026-08-19T17:59:38.009128+00:00",
+    "bytes": 784251
    }
   },
   {
@@ -1373,7 +1399,7 @@
     "corners": 0,
     "sections": 0,
     "updated_at": "2026-08-18T19:30:22.338865+00:00",
-    "bytes": 544039
+    "bytes": 547496
    }
   },
   {
@@ -1400,7 +1426,7 @@
     "corners": 15,
     "sections": 0,
     "updated_at": "2026-08-19T19:52:16.585935+00:00",
-    "bytes": 753971
+    "bytes": 758968
    }
   },
   {
