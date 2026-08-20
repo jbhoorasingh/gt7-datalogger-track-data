@@ -33,6 +33,16 @@ jobs:
       - name: index.json must match the bundles
         run: python tools/build_index.py --check
 
+      - name: Test the local track editor launcher
+        run: python tools/track_editor/test_launcher.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test the track editor core
+        run: node --test --experimental-test-isolation=none tools/track_editor/track-editor-core.test.mjs
+
   app-agrees:
     name: the app still accepts what we ship
     runs-on: ubuntu-latest

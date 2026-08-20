@@ -65,6 +65,18 @@ Nobody's evidence replaces anybody else's: every observation is stamped with
 the installation that made it, so two people who each drove a metre once have
 seen it twice between them.
 
+## Repairing recorded points
+
+To inspect and correct bad edge records without re-surveying the circuit, run:
+
+```bash
+python tools/track_editor.py
+```
+
+The local editor can open any bundle in `tracks/` or import another v4 bundle.
+It supports visual selection, deletion and edge/wall/run-off relabelling, then
+downloads a corrected copy without overwriting the source file.
+
 ## What this data is not
 
 - **Not a racing line.** These are the edges of the road, not the way round it.

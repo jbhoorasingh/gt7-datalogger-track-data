@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GT7 track bundle editor</title>
+    <link rel="stylesheet" href="./track-editor.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Local tool</p>
+        <h1>Track bundle editor</h1>
+        <p class="intro">Repair edge records visually, then download a corrected copy. Source files are never overwritten.</p>
+      </div>
+      <div id="document-summary" class="document-summary" hidden>
+        <strong id="document-name"></strong>
+        <span id="document-count"></span>
+      </div>
+    </header>
+
+    <main>
+      <aside class="sidebar" aria-label="Editor controls">
+        <section class="panel source-panel">
+          <h2>Open a bundle</h2>
+          <label for="track-select">Repository track</label>
+          <div class="field-row">
+            <select id="track-select">
+              <option value="">Choose a track…</option>
+            </select>
+            <button id="load-track" type="button" disabled>Load</button>
+          </div>
+          <div class="divider"><span>or</span></div>
+          <label class="file-button" for="file-input">Import bundle JSON</label>
+          <input id="file-input" type="file" accept="application/json,.json" />
+          <p class="help">Use import for bundles that are not in <code>tracks/</code>.</p>
+        </section>
+
+        <div id="editing-controls" hidden>
+          <section class="panel">
+            <div class="section-heading">
+              <h2>View</h2>
+              <button id="fit-view" class="quiet" type="button">Fit track</button>
+            </div>
+            <fieldset>
+              <legend>Side</legend>
+              <label class="check"><input type="checkbox" data-side="L" checked /> Left</label>
+              <label class="check"><input type="checkbox" data-side="R" checked /> Right</label>
+            </fieldset>
+            <fieldset>
+              <legend>Point type</legend>
+              <label class="check"><input type="checkbox" data-kind="edge" checked /><i class="swatch edge"></i> Edge</label>
+              <label class="check"><input type="checkbox" data-kind="wall" checked /><i class="swatch wall"></i> Wall</label>
+              <label class="check"><input type="checkbox" data-kind="runoff" checked /><i class="swatch runoff"></i> Run-off</label>
+              <label class="check"><input type="checkbox" data-kind="auto" checked /><i class="swatch auto"></i> Auto</label>
+              <label class="check"><input type="checkbox" data-kind="straddle" checked /><i class="swatch straddle"></i> Straddle</label>
+            </fieldset>
+          </section>
+
+          <section class="panel">
+            <h2>Select points</h2>
+            <div class="tool-grid" role="group" aria-label="Pointer tool">
+              <button class="tool active" type="button" data-tool="select" aria-pressed="true">Click</button>
+              <button class="tool" type="button" data-tool="brush-add" aria-pressed="false">Brush +</button>
+              <button class="tool" type="button" data-tool="brush-remove" aria-pressed="false">Brush −</button>
+              <button class="tool" type="button" data-tool="pan" aria-pressed="false">Pan</button>
+            </div>
+            <label for="brush-size">Brush radius <output id="brush-output">18 px</output></label>
+            <input id="brush-size" type="range" min="6" max="60" value="18" />
+            <p class="help">The brush affects only visible points. Use the mouse wheel to zoom.</p>
+            <div class="selection-summary">
+              <strong id="selected-count">0</strong>
+              <span>points selected</span>
+              <button id="clear-selection" class="quiet" type="button" disabled>Clear</button>
+            </div>
+          </section>
+
+          <section class="panel actions">
+            <h2>Edit selection</h2>
+            <div class="field-row">
+              <select id="relabel-kind" aria-label="New point type">
+                <option value="edge">Edge</option>
+                <option value="wall">Wall</option>
+                <option value="runoff">Run-off</option>
+              </select>
+              <button id="relabel" type="button" disabled>Relabel</button>
+            </div>
+            <button id="delete-selection" class="danger" type="button" disabled>Delete selected points</button>
+            <div class="history-row">
+              <button id="undo" class="quiet" type="button" disabled>Undo</button>
+              <button id="redo" class="quiet" type="button" disabled>Redo</button>
+              <button id="reset" class="quiet" type="button">Reset</button>
+            </div>
+            <button id="download" class="primary" type="button">Download corrected JSON</button>
+          </section>
+        </div>
+      </aside>
+
+      <section class="workspace" aria-label="Track visualization">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-mark" aria-hidden="true">⌁</div>
+          <h2>Choose a repository track or import a bundle</h2>
+          <p>The editor plots the game’s x/z coordinates without changing their scale or shape.</p>
+        </div>
+        <div id="canvas-shell" class="canvas-shell" hidden>
+          <canvas id="track-canvas" tabindex="0" aria-label="Editable track point map"></canvas>
+          <div class="canvas-help">Wheel: zoom · Pan tool or middle-drag: move · Esc: clear selection · Delete: remove · Ctrl/Cmd+Z: undo</div>
+        </div>
+      </section>
+    </main>
+
+    <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="./track-editor.mjs"></script>
+  </body>
+</html>
