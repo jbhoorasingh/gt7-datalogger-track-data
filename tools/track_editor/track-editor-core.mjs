@@ -145,8 +145,8 @@ function validateCorners(items) {
     for (const field of ["entry", "exit"]) {
       if (corner[field] !== null && corner[field] !== undefined) validatePosition(corner[field], `${where}.${field}`);
     }
-    if (corner.direction !== null && corner.direction !== undefined && !["left", "right"].includes(corner.direction)) {
-      fail(`${where}.direction must be left, right, or null`);
+    if (corner.direction !== null && corner.direction !== undefined && !["L", "R"].includes(corner.direction)) {
+      fail(`${where}.direction must be L, R, or null`);
     }
     for (const field of ["name", "note"]) {
       if (corner[field] !== undefined && typeof corner[field] !== "string") fail(`${where}.${field} must be text`);
@@ -319,14 +319,15 @@ export function createView(edges, width, height, padding = 32) {
 export function worldToScreen(point, view, width, height) {
   return {
     x: width / 2 + (point.x - view.centerX) * view.scale,
-    y: height / 2 - (point.z - view.centerZ) * view.scale,
+    // Match the logger's map convention: game z increases toward screen-bottom.
+    y: height / 2 + (point.z - view.centerZ) * view.scale,
   };
 }
 
 export function screenToWorld(point, view, width, height) {
   return {
     x: view.centerX + (point.x - width / 2) / view.scale,
-    z: view.centerZ - (point.y - height / 2) / view.scale,
+    z: view.centerZ + (point.y - height / 2) / view.scale,
   };
 }
 

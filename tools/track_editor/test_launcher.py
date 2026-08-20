@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 from pathlib import Path
+import random
 import sys
 import threading
 import unittest
@@ -34,12 +36,18 @@ class LauncherTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         base = f"http://127.0.0.1:{server.server_address[1]}"
+        track = random.choice(sorted((track_editor.ROOT / "tracks").glob("*.json")))
         try:
             with urllib.request.urlopen(
                 f"{base}/tools/track_editor/track-editor.html"
             ) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn(b"Track bundle editor", response.read())
+
+            with urllib.request.urlopen(f"{base}/tracks/{track.name}") as response:
+                bundle = json.load(response)
+                self.assertEqual(bundle["format"], "gt7-datalogger-track-bundle")
+                self.assertGreater(len(bundle["edges"]), 0)
 
             request = urllib.request.Request(
                 f"{base}/tracks/not-written.json", data=b"{}", method="POST"

@@ -216,7 +216,7 @@ canvas.addEventListener("pointermove", (event) => {
   pointer.y = point.y;
   if (pointer.dragging && pointer.panning) {
     view.centerX -= (point.x - pointer.lastX) / view.scale;
-    view.centerZ += (point.y - pointer.lastY) / view.scale;
+    view.centerZ -= (point.y - pointer.lastY) / view.scale;
     pointer.lastX = point.x;
     pointer.lastY = point.y;
     draw();
@@ -249,7 +249,7 @@ canvas.addEventListener("wheel", (event) => {
   const nextScale = Math.max(view.baseScale * 0.2, Math.min(view.baseScale * 150, view.scale * factor));
   view.scale = nextScale;
   view.centerX = world.x - (point.x - logicalWidth / 2) / nextScale;
-  view.centerZ = world.z + (point.y - logicalHeight / 2) / nextScale;
+  view.centerZ = world.z - (point.y - logicalHeight / 2) / nextScale;
   draw();
 }, { passive: false });
 
