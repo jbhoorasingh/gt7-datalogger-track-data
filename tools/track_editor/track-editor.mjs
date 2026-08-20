@@ -314,7 +314,7 @@ $("#reset").addEventListener("click", () => { model.reset(); fitView(); updateUi
 $("#download").addEventListener("click", () => {
   try {
     const output = model.exportDocument();
-    const blob = new Blob([`${JSON.stringify(output, null, 1)}\n`], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(output)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
