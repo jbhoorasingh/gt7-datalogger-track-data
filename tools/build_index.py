@@ -68,7 +68,8 @@ def configurations(catalog: dict) -> list[dict]:
 
 
 def bundle_summary(path: Path) -> dict:
-    doc = json.loads(path.read_text(encoding="utf-8"))
+    raw = path.read_bytes()
+    doc = json.loads(raw.decode("utf-8"))
     edges = doc.get("edges", [])
     with_y = sum(1 for e in edges if e.get("y") is not None)
     return {
@@ -84,7 +85,13 @@ def bundle_summary(path: Path) -> dict:
         "corners": len(doc.get("corners", [])),
         "sections": len(doc.get("sections", [])),
         "updated_at": doc["meta"].get("updated_at", ""),
-        "bytes": path.stat().st_size,
+        # Counted off LF-normalised content, not path.stat().st_size: a
+        # working tree checked out with CRLF endings inflates the on-disk size
+        # by one byte per line, so a Windows contributor and CI would disagree
+        # about a file neither of them changed. The index is meant to be a pure
+        # function of the bundles, so this is the size git stores and the size
+        # the pack and the site serve, on every platform.
+        "bytes": len(raw.replace(b"\r\n", b"\n")),
     }
 
 

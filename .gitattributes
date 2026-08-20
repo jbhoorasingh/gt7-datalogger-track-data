@@ -1,0 +1,10 @@
+# Everything here is text, and all of it is line-ending sensitive.
+#
+# A bundle is stored one record per line so a diff reads as the metres that
+# changed, and index.json records each bundle's size in bytes. Both of those
+# break in a working tree checked out with CRLF endings: the size grows by one
+# byte per line, so `python tools/build_index.py` on Windows writes an index
+# that CI — which counts LF — reports as stale, for files nobody touched.
+#
+# Normalise on the way in, hand out LF on the way out, on every platform.
+* text=auto eol=lf
