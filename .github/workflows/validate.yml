@@ -33,6 +33,15 @@ jobs:
       - name: index.json must match the bundles
         run: python tools/build_index.py --check
 
+      - name: signatures.json must match the bundles and the vendored captures
+        run: python tools/build_signatures.py --check
+
+      - name: Test the signature build
+        run: python tools/test_build_signatures.py
+
+      - name: Test the vendoring
+        run: python tools/test_vendor_captures.py
+
       - name: Test the local track editor launcher
         run: python tools/track_editor/test_launcher.py
 

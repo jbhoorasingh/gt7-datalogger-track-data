@@ -13,7 +13,9 @@
       <p class="dim">
         Surveyed border geometry for Gran Turismo 7 circuits, contributed by people
         driving them. Pick a track to inspect what has actually been mapped —
-        the gaps are as informative as the lines.
+        the gaps are as informative as the lines. Circuits nobody has surveyed
+        show the shape of a single recorded lap, so you can see what is missing
+        rather than a blank row.
         <a href="https://github.com/jbhoorasingh/gt7-datalogger-track-data">Repository</a>
       </p>
     </header>
@@ -23,21 +25,26 @@
         <div class="controls">
           <input id="search" type="search" placeholder="filter tracks…" aria-label="Filter tracks" />
           <label class="check">
-            <input id="only-surveyed" type="checkbox" checked />
-            surveyed only
+            <span class="sr-only">Show</span>
+            <select id="coverage" aria-label="Coverage">
+              <option value="all">everything</option>
+              <option value="surveyed">surveyed</option>
+              <option value="shape">shape only</option>
+              <option value="nothing">nothing yet</option>
+            </select>
           </label>
         </div>
         <ul id="list"></ul>
       </aside>
 
       <section id="viewer">
-        <div id="empty" class="dim">Pick a surveyed track on the left.</div>
+        <div id="empty" class="dim">Pick a track on the left.</div>
         <div id="detail" hidden>
           <h2 id="track-name"></h2>
           <p id="track-official" class="dim"></p>
           <div id="stats" class="stats"></div>
           <canvas id="map" width="900" height="900"></canvas>
-          <div class="legend">
+          <div class="legend" id="legend-survey">
             <span><i style="background:#60a5fa"></i>left border</span>
             <span><i style="background:#f472b6"></i>right border</span>
             <span><i style="background:#a855f7"></i>run-off limit</span>
@@ -45,8 +52,13 @@
             <span><i style="background:#facc15"></i>corner apex</span>
             <span><i style="background:#e5e7eb"></i>start/finish</span>
           </div>
+          <div class="legend" id="legend-seed" hidden>
+            <span><i style="background:#f59e0b"></i>one recorded lap</span>
+            <span><i style="background:#e5e7eb"></i>where it started</span>
+            <span class="dim">arrows show which way it was driven</span>
+          </div>
           <p class="dim" id="hint"></p>
-          <p><a id="download" download>Download this bundle (JSON)</a></p>
+          <p id="download-line"><a id="download" download>Download this bundle (JSON)</a></p>
         </div>
       </section>
     </main>

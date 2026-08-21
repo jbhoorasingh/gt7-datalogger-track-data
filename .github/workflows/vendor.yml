@@ -1,0 +1,176 @@
+# Pull new circuits from upstream, as a pull request nobody has to remember to
+# open.
+#
+# The captures under vendor/ are the only source for the 69 configurations
+# nobody here has surveyed, and they are vendored rather than fetched at build
+# time so a build is reproducible offline. That is the right trade, but it has
+# a cost: the data only moves when somebody remembers to move it, and upstream
+# adding a circuit is exactly the thing this repository exists to notice.
+#
+# So this refreshes on a schedule and opens a pull request — never a push to
+# main. A capture is a road, and a road appearing, vanishing or being re-driven
+# should land as a diff a person read, not as a build that quietly started
+# describing somewhere else.
+name: vendor
+
+on:
+  schedule:
+    # Weekly, matching the app-drift check in validate.yml, an hour ahead of it
+    # so a green Monday morning means both questions were asked.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: vendor
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Re-vendor from upstream
+        id: vendor
+        run: |
+          set -euo pipefail
+          python tools/vendor_captures.py | tee vendor.log
+          if git diff --quiet -- vendor/circuits.json; then
+            echo "moved=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upstream has not moved
+        if: steps.vendor.outputs.moved == 'false'
+        run: echo "Nothing to pull. No pull request."
+
+      # Not `set -e`: an unmapped capture is SUPPOSED to fail here. A new name
+      # upstream is either a new configuration or a rename, and both are
+      # decisions for a person — so the failure becomes the pull request's
+      # subject rather than a red cron nobody opens.
+      - name: Rebuild the signatures
+        id: build
+        if: steps.vendor.outputs.moved == 'true'
+        run: |
+          set +e
+          python tools/build_signatures.py > signatures.log 2>&1
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat signatures.log
+
+      - name: Check it the way a pull request would be checked
+        id: checks
+        if: steps.vendor.outputs.moved == 'true'
+        run: |
+          # A pull request opened with GITHUB_TOKEN does not start workflows,
+          # so validate.yml will NOT run on the one this job opens. Run the
+          # same questions here, and put the answers in the body, or the pull
+          # request would arrive with no checks and look as if it had passed.
+          set +e
+          ok=0
+          check () {
+            if "${@:2}" > /dev/null 2>&1; then
+              echo "- $1: pass"
+            else
+              echo "- $1: **FAIL**"
+              ok=1
+            fi
+          }
+          # Redirected, never piped: the left-hand side of a pipeline runs in a
+          # subshell, so `ok` would be set there and read back here as 0, and
+          # every refresh would claim to have passed.
+          {
+            check "every bundle is valid" python tools/validate.py
+            check "index.json matches the bundles" python tools/build_index.py --check
+            check "signatures.json matches its inputs" python tools/build_signatures.py --check
+            check "signature build tests" python tools/test_build_signatures.py
+            check "vendoring tests" python tools/test_vendor_captures.py
+          } > checks.log
+          cat checks.log
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the pull request
+        if: steps.vendor.outputs.moved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_STATUS: ${{ steps.build.outputs.status }}
+          CHECKS_OK: ${{ steps.checks.outputs.ok }}
+        run: |
+          set -euo pipefail
+          branch=auto/vendor-captures
+          needs_decision=0
+          if [ "$BUILD_STATUS" != "0" ] || [ "$CHECKS_OK" != "0" ]; then
+            needs_decision=1
+          fi
+
+          {
+            echo "Upstream moved, so this is the refresh."
+            echo
+            echo "## What changed in \`vendor/circuits.json\`"
+            echo
+            echo '```'
+            cat vendor.log
+            echo '```'
+            echo
+            if [ "$BUILD_STATUS" = "0" ]; then
+              echo "## What that did to \`signatures.json\`"
+            else
+              echo "## :warning: The signature build failed, and that is the point"
+              echo
+              echo "It refuses an upstream name it cannot place rather than"
+              echo "skipping it, because a new name is either a configuration"
+              echo "worth a row or a rename worth a line in"
+              echo "\`CAPTURE_NAME_FIXES\` — and both are decisions for a"
+              echo "person. Make that decision on this branch and push; the"
+              echo "re-vendored captures are already here."
+            fi
+            echo
+            echo '```'
+            cat signatures.log
+            echo '```'
+            echo
+            echo "## Checks"
+            echo
+            cat checks.log
+            echo
+            echo "_Run in this job, not on the pull request: a pull request"
+            echo "opened with \`GITHUB_TOKEN\` does not start workflows, so"
+            echo "\`validate\` will not run on it by itself. Pushing any commit"
+            echo "of your own to this branch will start it._"
+          } > body.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add vendor/circuits.json signatures.json
+          git commit -F- <<'MSG'
+          Refresh the vendored captures from upstream
+
+          Opened by .github/workflows/vendor.yml. What moved, and what it did
+          to signatures.json, is in the pull request body.
+          MSG
+          git push --force origin "$branch"
+
+          title="Refresh the vendored captures from upstream"
+          if [ "$needs_decision" = "1" ]; then
+            title="$title (needs a decision)"
+          fi
+
+          if url=$(gh pr view "$branch" --json url --jq .url 2>/dev/null); then
+            gh pr edit "$branch" --title "$title" --body-file body.md
+            echo "updated $url"
+          else
+            draft=""
+            if [ "$needs_decision" = "1" ]; then draft="--draft"; fi
+            # shellcheck disable=SC2086
+            gh pr create --base main --head "$branch" \
+              --title "$title" --body-file body.md $draft
+          fi
