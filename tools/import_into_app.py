@@ -27,6 +27,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
+def bundle_dir() -> Path:
+    """Return the pack bundle directory, or this repository's tracks directory."""
+    packed = HERE / "tracks"
+    if packed.is_dir():
+        return packed
+    return HERE.parent / "tracks"
+
+
 def post(base: str, doc: bytes, token: str) -> dict:
     request = urllib.request.Request(
         f"{base}/api/track-bundles/import",
@@ -51,7 +59,7 @@ def main(argv: list[str]) -> int:
         if arg == "--token" and i + 1 < len(argv):
             token = argv[i + 1]
 
-    tracks = sorted((HERE / "tracks").glob("*.json"))
+    tracks = sorted(bundle_dir().glob("*.json"))
     if only:
         tracks = [p for p in tracks if only in p.stem]
     if not tracks:

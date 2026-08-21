@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gt7-datalogger-track-data"
+version = "0.1.0"
+description = "Unified local tools for GT7 datalogger track data"
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.12",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx>=0.28",
+]
+
+[project.scripts]
+gt7-tracks = "gt7_track_tools.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gt7_track_tools*"]
