@@ -21,7 +21,7 @@ corrected corner label should not have to wait for a software release.
 | `signatures.json` | enough geometry — length, bounding box and the racing line in driving order — for the app to name a circuit from one lap, before anybody has named it by hand |
 | `catalog/tracks.json` | the official GT7 track/layout metadata the index is built from |
 | `vendor/` | third-party measurements the signatures lean on, and their licence |
-| `site/` | the inspection page published to GitHub Pages |
+| `site/` | the inspection page published to GitHub Pages — surveyed circuits draw their borders, the rest draw the one recorded lap behind their signature |
 | `tools/` | add a bundle, rebuild the index and the signatures, validate everything |
 
 The index lists **every** configuration, surveyed or not. A list of only what

@@ -83,6 +83,13 @@ aside button:hover { background: var(--panel-2); }
 aside button[aria-current="true"] { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
 aside button .meta { font-size: 0.72rem; color: var(--dim); }
 aside button.unsurveyed .name { color: var(--dim); }
+/* A circuit with a seed shape is not surveyed, but it is not nothing either:
+   it is selectable and it draws, so it should not read as a dead row. */
+aside button.shape-only .name { color: inherit; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
 
 #viewer {
   border: 1px solid var(--edge);
@@ -122,6 +129,10 @@ canvas {
   border-radius: 0.5rem;
 }
 
+/* An author `display` beats the UA stylesheet's rule for [hidden], so a
+   flex row that is sometimes hidden has to say so itself. Both legends are
+   toggled: a seed path has no borders to name. */
+.legend[hidden] { display: none; }
 .legend {
   display: flex;
   flex-wrap: wrap;

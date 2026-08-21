@@ -27,7 +27,7 @@ jobs:
           set -euo pipefail
           mkdir -p _site/tracks
           cp site/index.html site/app.js site/style.css _site/
-          cp index.json _site/
+          cp index.json signatures.json _site/
           cp tracks/*.json _site/tracks/ 2>/dev/null || echo "no bundles yet"
           # Jekyll would otherwise try to process this and drop the JSON.
           touch _site/.nojekyll
