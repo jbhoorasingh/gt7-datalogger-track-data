@@ -199,6 +199,7 @@ def default_registry() -> ToolRegistry:
                 ),
             ),
             long_running=True,
+            gui_visible=False,
         )
     )
     return registry

@@ -121,6 +121,12 @@ class RegistryTests(unittest.TestCase):
             ["http://localhost:8000", "--token", "secret"],
         )
 
+    def test_default_gui_tools_hide_the_separate_track_editor_launcher(self) -> None:
+        ids = [tool["id"] for tool in default_registry().as_dicts(gui_visible=True)]
+
+        self.assertNotIn("track-editor", ids)
+        self.assertIn("validate", ids)
+
 
 class CliDispatchTests(unittest.TestCase):
     def test_build_index_dispatches_to_registry(self) -> None:
@@ -189,6 +195,29 @@ class FastApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["tools"][0]["id"], "build-index")
 
+    def test_dashboard_embeds_the_track_editor(self) -> None:
+        with self.make_client() as client:
+            response = client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.text
+        self.assertIn('id="track-editor-frame"', html)
+        self.assertIn('src="/tools/track_editor/track-editor.html"', html)
+        self.assertNotIn("launch-editor", html)
+
+    def test_serves_editor_assets_and_repository_data_from_the_gui_app(self) -> None:
+        with self.make_client() as client:
+            editor = client.get("/tools/track_editor/track-editor.html")
+            index = client.get("/index.json")
+            bundle = client.get("/tracks/daytona-tri-oval.json")
+
+        self.assertEqual(editor.status_code, 200)
+        self.assertIn("Track bundle editor", editor.text)
+        self.assertEqual(index.status_code, 200)
+        self.assertEqual(index.json()["format"], "gt7-datalogger-track-index")
+        self.assertEqual(bundle.status_code, 200)
+        self.assertEqual(bundle.json()["format"], "gt7-datalogger-track-bundle")
+
     def test_starts_run_and_returns_logs(self) -> None:
         with self.make_client() as client:
             response = client.post(
@@ -218,32 +247,6 @@ class FastApiTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 400)
-
-    def test_launches_track_editor_action(self) -> None:
-        class FakeTrackEditor:
-            def __init__(self) -> None:
-                self.ports: list[int] = []
-                self.closed = False
-
-            def launch(self, port: int = 0) -> str:
-                self.ports.append(port)
-                return f"http://127.0.0.1:{port}/tools/track_editor/track-editor.html"
-
-            def close(self) -> None:
-                self.closed = True
-
-        editor = FakeTrackEditor()
-        app = create_app(registry=ToolRegistry(), track_editor=editor)
-        with TestClient(app) as client:
-            response = client.post("/api/track-editor", json={"port": 8765})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()["url"],
-            "http://127.0.0.1:8765/tools/track_editor/track-editor.html",
-        )
-        self.assertEqual(editor.ports, [8765])
-        self.assertTrue(editor.closed)
 
 
 class DataGuardTests(unittest.TestCase):
