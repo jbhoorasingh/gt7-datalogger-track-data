@@ -195,6 +195,48 @@ def dumps(doc: dict[str, Any]) -> str:
     return text
 
 
+def changes(before: dict[str, Any] | None, after: dict[str, Any]) -> list[str]:
+    """What moved between two manifests, as lines a person can read.
+
+    The refresh is scheduled (.github/workflows/vendor.yml), so most runs have
+    nobody watching them. "84 captures" says nothing about whether a circuit
+    appeared, and the whole reason this repository vendors rather than fetches
+    is that a road changing should be something a person sees.
+    """
+    if before is None:
+        return [f"+ {c['variation_name']} ({c['file']})" for c in after["captures"]]
+
+    old = {c["file"]: c for c in before.get("captures", [])}
+    new = {c["file"]: c for c in after["captures"]}
+    lines: list[str] = []
+    for name in sorted(new.keys() - old.keys()):
+        c = new[name]
+        lines.append(f"+ {c['variation_name']} ({name}, {c['length_m']:,.0f} m, "
+                     f"{len(c['path'])} path points)")
+    for name in sorted(old.keys() - new.keys()):
+        lines.append(f"- {old[name]['variation_name']} ({name})")
+    for name in sorted(old.keys() & new.keys()):
+        a, b = old[name], new[name]
+        if a.get("sha256") == b.get("sha256"):
+            continue
+        moved = []
+        if a["variation_name"] != b["variation_name"]:
+            moved.append(f"named {a['variation_name']!r} -> {b['variation_name']!r}")
+        if a["length_m"] != b["length_m"]:
+            moved.append(f"length {a['length_m']:,.0f} -> {b['length_m']:,.0f} m")
+        if len(a["path"]) != len(b["path"]):
+            moved.append(f"path {len(a['path'])} -> {len(b['path'])} points")
+        for field in ("min_x", "max_x", "min_z", "max_z"):
+            if a[field] != b[field]:
+                moved.append("bounding box moved")
+                break
+        # An upstream edit that changes none of the numbers we take is still
+        # worth a line: it says the file was touched and we looked.
+        lines.append(f"~ {b['variation_name']} ({name}): "
+                     + (", ".join(moved) or "re-recorded, same measurements"))
+    return lines
+
+
 def main(argv: list[str]) -> int:
     ref = "main"
     if "--ref" in argv:
@@ -205,21 +247,32 @@ def main(argv: list[str]) -> int:
     captures = doc["captures"]
     points = sum(c["points"] for c in captures)
     kept = sum(len(c["path"]) for c in captures)
+    commit = doc["source"]["commit"][:12]
+
+    current = CAPTURES.read_text(encoding="utf-8") if CAPTURES.exists() else ""
+    previous = json.loads(current) if current else None
+    moved = changes(previous, doc)
 
     if "--check" in argv:
-        current = CAPTURES.read_text(encoding="utf-8") if CAPTURES.exists() else ""
         if current != text:
-            print(f"vendor/circuits.json is stale against {REPO}@{doc['source']['commit'][:12]}"
+            print(f"vendor/circuits.json is stale against {REPO}@{commit}"
                   " — run: python tools/vendor_captures.py")
+            for line in moved:
+                print(f"  {line}")
             return 1
-        print(f"vendor/circuits.json matches {REPO}@{doc['source']['commit'][:12]}")
+        print(f"vendor/circuits.json matches {REPO}@{commit}")
         return 0
 
     CAPTURES.parent.mkdir(parents=True, exist_ok=True)
     CAPTURES.write_text(text, encoding="utf-8")
     print(f"vendor/circuits.json: {len(captures)} captures distilled from "
           f"{points:,} points to {kept:,} at one every {PATH_STEP_M} m, "
-          f"{REPO}@{doc['source']['commit'][:12]}")
+          f"{REPO}@{commit}")
+    if current == text:
+        print("unchanged — upstream has not moved")
+    else:
+        for line in moved:
+            print(f"  {line}")
     return 0
 
 

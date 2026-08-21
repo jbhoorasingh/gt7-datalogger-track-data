@@ -34,7 +34,18 @@ python tools/vendor_captures.py            # rewrite from upstream main
 python tools/vendor_captures.py --check    # fail if upstream has moved
 ```
 
-Both need network. Neither runs in CI: `build_signatures.py --check` guards the
-generated file against the vendored numbers, and re-vendoring is a decision
-somebody makes — a capture appearing or changing upstream should land as a
-reviewable diff, not as a build that quietly starts describing different roads.
+Both need network, and both print what moved — which circuits appeared,
+vanished, or were re-recorded — rather than only a count.
+
+`.github/workflows/vendor.yml` runs the refresh weekly and **opens a pull
+request** when upstream has moved. It never pushes to a branch anybody builds
+from: a capture is a road, and a road appearing or being re-driven should land
+as a diff a person read, not as a build that quietly starts describing
+somewhere else. If the new data includes a name that maps to no configuration,
+the signature build fails on purpose and that failure becomes the pull
+request's subject — the decision (a new catalog entry, or a line in
+`CAPTURE_NAME_FIXES`) is one for a person, and the re-vendored captures are
+already on the branch to make it on.
+
+Neither command runs on an ordinary pull request. `build_signatures.py --check`
+is what guards the generated file there, offline, against whatever is vendored.

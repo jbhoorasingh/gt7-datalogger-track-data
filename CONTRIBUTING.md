@@ -69,6 +69,10 @@ Then open a pull request.
   forward row. The build prints what it dropped, flagged and could not tell
   apart on every run; `tools/test_build_signatures.py` covers the rules.
 
+A separate `vendor` workflow refreshes `vendor/circuits.json` from upstream
+weekly and opens a pull request when a circuit has appeared, vanished or been
+re-recorded. It never pushes to `main`, and it does not run on yours.
+
 A separate `app-agrees` job installs the datalogger and checks it still
 accepts every bundle here unchanged. If only that job is red, nothing is
 wrong with your pull request: the format has moved in the app and this
