@@ -385,7 +385,7 @@ DASHBOARD_HTML = r"""<!doctype html>
         id="track-editor-frame"
         class="editor-frame"
         title="Track bundle editor"
-        src="/tools/track_editor/track-editor.html"
+        src="/tools/track_editor/track-editor.html?v=empty-state-hide"
       ></iframe>
     </section>
   </main>

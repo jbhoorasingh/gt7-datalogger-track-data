@@ -203,7 +203,7 @@ class FastApiTests(unittest.TestCase):
         html = response.text
         self.assertIn('id="track-editor-frame"', html)
         self.assertIn('id="latest-log"', html)
-        self.assertIn('src="/tools/track_editor/track-editor.html"', html)
+        self.assertIn('src="/tools/track_editor/track-editor.html?v=empty-state-hide"', html)
         self.assertNotIn("launch-editor", html)
 
     def test_serves_editor_assets_and_repository_data_from_the_gui_app(self) -> None:
@@ -216,6 +216,8 @@ class FastApiTests(unittest.TestCase):
 
         self.assertEqual(editor.status_code, 200)
         self.assertIn("Track bundle editor", editor.text)
+        self.assertIn("./track-editor.css?v=empty-state-hide", editor.text)
+        self.assertIn("./track-editor.mjs?v=empty-state-hide", editor.text)
         self.assertEqual(editor_css.status_code, 200)
         self.assertEqual(editor_css.headers["cache-control"], "no-store")
         self.assertIn("[hidden] { display: none !important; }", editor_css.text)
