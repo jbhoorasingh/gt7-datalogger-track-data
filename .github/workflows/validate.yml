@@ -52,6 +52,12 @@ jobs:
       - name: Test the track editor core
         run: node --test --experimental-test-isolation=none tools/track_editor/track-editor-core.test.mjs
 
+      - name: Install unified tool dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Test the unified CLI and GUI
+        run: python tools/test_unified_interfaces.py
+
   app-agrees:
     name: the app still accepts what we ship
     runs-on: ubuntu-latest
