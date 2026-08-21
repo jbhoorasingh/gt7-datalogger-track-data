@@ -137,7 +137,9 @@ function updateUi() {
 function loadDocument(document, filename) {
   model = new BundleEditorModel(document, filename);
   view = null;
-  $("#empty-state").hidden = true;
+  const emptyState = $("#empty-state");
+  emptyState.hidden = true;
+  emptyState.style.display = "none";
   canvasShell.hidden = false;
   $("#editing-controls").hidden = false;
   $("#document-summary").hidden = false;
