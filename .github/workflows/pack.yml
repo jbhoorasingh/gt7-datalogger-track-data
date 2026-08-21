@@ -29,6 +29,7 @@ jobs:
         run: |
           python tools/validate.py
           python tools/build_index.py --check
+          python tools/build_signatures.py --check
 
       - name: Assemble the pack
         id: pack
@@ -41,7 +42,7 @@ jobs:
           esac
           mkdir -p "pack/$name/tracks"
           cp tracks/*.json "pack/$name/tracks/"
-          cp index.json catalog/tracks.json "pack/$name/"
+          cp index.json signatures.json catalog/tracks.json "pack/$name/"
           cp tools/import_into_app.py "pack/$name/"
           cp PACK_README.md "pack/$name/README.md"
           # A manifest so a pack can say what it is once it has been unzipped
@@ -51,17 +52,20 @@ jobs:
           name = sys.argv[1]
           root = pathlib.Path("pack") / name
           index = json.loads((root / "index.json").read_text())
+          signatures = json.loads((root / "signatures.json").read_text())
           manifest = {
               "pack": name,
               "ref": os.environ.get("GITHUB_REF_NAME", ""),
               "commit": os.environ.get("GITHUB_SHA", ""),
               "bundle_format_version": index["bundle_format_version"],
               "counts": index["counts"],
+              "signature_counts": signatures["counts"],
               "tracks": sorted(p.name for p in (root / "tracks").glob("*.json")),
           }
           (root / "MANIFEST.json").write_text(json.dumps(manifest, indent=1) + "\n")
           print(f"{manifest['counts']['surveyed']} bundles, "
-                f"{manifest['counts']['points']:,} m of border")
+                f"{manifest['counts']['points']:,} m of border, "
+                f"{signatures['counts']['with_signature']} signatures")
           PY
           (cd pack && zip -qr "../$name.zip" "$name")
           echo "name=$name" >> "$GITHUB_OUTPUT"

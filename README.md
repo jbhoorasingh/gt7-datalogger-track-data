@@ -18,13 +18,30 @@ corrected corner label should not have to wait for a software release.
 |---|---|
 | `index.json` | **all 121 GT7 configurations**, with their official name, country, turn count and length — and, where one exists, the bundle we have |
 | `tracks/<slug>.json` | one surveyed circuit, in the app's [track bundle format](https://jbhoorasingh.github.io/gt7-datalogger/reference/track-bundle-format/) (v4) |
+| `signatures.json` | enough geometry — length, bounding box and the racing line in driving order — for the app to name a circuit from one lap, before anybody has named it by hand |
 | `catalog/tracks.json` | the official GT7 track/layout metadata the index is built from |
+| `vendor/` | third-party measurements the signatures lean on, and their licence |
 | `site/` | the inspection page published to GitHub Pages |
-| `tools/` | add a bundle, rebuild the index, validate everything |
+| `tools/` | add a bundle, rebuild the index and the signatures, validate everything |
 
 The index lists **every** configuration, surveyed or not. A list of only what
 we have would say nothing about what is missing, and what is missing is most of
 the point.
+
+`signatures.json` is the other way round: only the configurations we can
+recognise. It exists because the app could not name a circuit until a human
+named one, so a fresh install identified nothing and everything hanging off the
+circuit name stayed empty. A surveyed bundle gives the best row; where there is
+no survey, a vendored recording of a lap does.
+
+Each row also carries the racing line, thinned to a point every 20 m and kept
+**in the order it was driven**. That order is load-bearing. A length and a box
+recognise a circuit but cannot tell a layout from its reverse, which has
+exactly the same box and exactly the same length — and against 896 real laps
+that misfiled 10 Deep Forest Reverse laps as Deep Forest Raceway, where they
+pooled with the forward laps and competed for the same personal best. Walking a
+lap along the line answers which way round it went. A reverse layout gets no row
+of its own: its forward row names it, in `reverse`.
 
 ## Using it
 
@@ -53,6 +70,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 ```bash
 python tools/add_bundle.py ~/Downloads/deep-forest-raceway.json
 python tools/build_index.py
+python tools/build_signatures.py
 ```
 
 Your bundle must name the official GT7 configuration it belongs to — confirm

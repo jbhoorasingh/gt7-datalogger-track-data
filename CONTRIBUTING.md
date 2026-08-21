@@ -39,6 +39,7 @@ python tools/add_bundle.py ~/Downloads/deep-forest-raceway.json
 python tools/add_bundle.py --from-app http://gt7.local:8000
 
 python tools/build_index.py
+python tools/build_signatures.py
 ```
 
 `add_bundle.py` validates the file, names it after its configuration, and
@@ -57,6 +58,16 @@ Then open a pull request.
 - The filename matches that configuration.
 - The file is in canonical form — `python tools/validate.py --fix` writes it.
 - `index.json` matches the bundles — `python tools/build_index.py` rebuilds it.
+- `signatures.json` matches the bundles and `vendor/circuits.json` —
+  `python tools/build_signatures.py` rebuilds it. A new bundle changes it:
+  a surveyed configuration outranks the recorded lap that stood in for it, so
+  the row's bounding box becomes the road you surveyed rather than one line
+  through it. Its `path` is still borrowed from the recording — a bundle is
+  edge records sorted by position, not a line down the road — and the build
+  checks the borrowed line against your survey's own `hx`/`hz` headings before
+  trusting it, so a recording of the *reverse* layout cannot be attached to a
+  forward row. The build prints what it dropped, flagged and could not tell
+  apart on every run; `tools/test_build_signatures.py` covers the rules.
 
 A separate `app-agrees` job installs the datalogger and checks it still
 accepts every bundle here unchanged. If only that job is red, nothing is
@@ -87,6 +98,7 @@ rewriting the same records. Do not hand-resolve it. Rebase and re-run:
 ```bash
 python tools/add_bundle.py <your export>   # merges into whatever is now on main
 python tools/build_index.py
+python tools/build_signatures.py
 ```
 
 The merge is defined by the format (each source's own highest run count wins,

@@ -27,6 +27,7 @@ adding to it.
 |---|---|
 | `tracks/*.json` | one bundle per surveyed configuration (format v4) |
 | `index.json` | every GT7 configuration, and which of them this pack covers |
+| `signatures.json` | length, bounding box and the driven line per configuration, so the app can name a circuit — and tell it from its reverse — from a lap you have already driven |
 | `tracks.json` | the official GT7 track/layout catalog |
 | `MANIFEST.json` | which release this pack is, and what it contains |
 
