@@ -137,6 +137,12 @@ def create_app(
     app.state.registry = registry or default_registry()
     app.state.runs = store or RunStore()
 
+    @app.middleware("http")
+    async def no_store_local_assets(request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     app.mount(
         "/tools/track_editor",
         StaticFiles(directory=TOOLS / "track_editor"),

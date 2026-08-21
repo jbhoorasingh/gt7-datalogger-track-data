@@ -210,13 +210,17 @@ class FastApiTests(unittest.TestCase):
         with self.make_client() as client:
             editor = client.get("/tools/track_editor/track-editor.html")
             editor_css = client.get("/tools/track_editor/track-editor.css")
+            editor_js = client.get("/tools/track_editor/track-editor.mjs")
             index = client.get("/index.json")
             bundle = client.get("/tracks/daytona-tri-oval.json")
 
         self.assertEqual(editor.status_code, 200)
         self.assertIn("Track bundle editor", editor.text)
         self.assertEqual(editor_css.status_code, 200)
-        self.assertIn(".empty-state[hidden] { display: none; }", editor_css.text)
+        self.assertEqual(editor_css.headers["cache-control"], "no-store")
+        self.assertIn("[hidden] { display: none !important; }", editor_css.text)
+        self.assertEqual(editor_js.status_code, 200)
+        self.assertIn('emptyState.style.display = "none";', editor_js.text)
         self.assertEqual(index.status_code, 200)
         self.assertEqual(index.json()["format"], "gt7-datalogger-track-index")
         self.assertEqual(bundle.status_code, 200)
