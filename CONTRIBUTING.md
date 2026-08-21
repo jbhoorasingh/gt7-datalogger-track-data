@@ -70,8 +70,10 @@ Then open a pull request.
   apart on every run; `tools/test_build_signatures.py` covers the rules.
 
 A separate `vendor` workflow refreshes `vendor/circuits.json` from upstream
-weekly and opens a pull request when a circuit has appeared, vanished or been
-re-recorded. It never pushes to `main`, and it does not run on yours.
+weekly, and merges the refresh itself when every check passes. It opens a draft
+pull request instead when a capture matches no configuration in the catalog, or
+when a check fails — see "How this stays current" in the README. It does not run
+on your pull request and cannot affect it.
 
 A separate `app-agrees` job installs the datalogger and checks it still
 accepts every bundle here unchanged. If only that job is red, nothing is
