@@ -231,6 +231,50 @@ DASHBOARD_HTML = r"""<!doctype html>
       overflow: auto;
       padding-top: 0.7rem;
     }
+    .latest-log {
+      min-height: 12rem;
+      max-height: 38vh;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 0.65rem;
+      background: #070a0f;
+      margin: 0.75rem 0 0.65rem;
+    }
+    .latest-log-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.65rem;
+      align-items: center;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      background: #0c1219;
+    }
+    .latest-log-head strong {
+      display: block;
+      color: #c8d2df;
+      font-size: 0.82rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .latest-log-head span {
+      display: block;
+      color: var(--dim);
+      font: 0.72rem/1.35 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .latest-log pre {
+      border-top: 0;
+      max-height: none;
+      min-height: 8rem;
+    }
+    .empty-log {
+      margin: 0;
+      padding: 3rem 1rem;
+      text-align: center;
+      color: var(--dim);
+    }
     .run {
       border: 1px solid var(--line);
       border-radius: 0.65rem;
@@ -323,6 +367,9 @@ DASHBOARD_HTML = r"""<!doctype html>
             <h2>Runs</h2>
             <button id="refresh" type="button">Refresh</button>
           </div>
+          <div id="latest-log" class="latest-log" aria-live="polite">
+            <p class="empty-log">Run a command to see stdout and stderr here.</p>
+          </div>
           <div id="runs" class="run-list"></div>
         </div>
       </section>
@@ -345,6 +392,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   <script>
     const toolsEl = document.querySelector("#tools");
     const runsEl = document.querySelector("#runs");
+    const latestLogEl = document.querySelector("#latest-log");
     const editorFrame = document.querySelector("#track-editor-frame");
     let polling = null;
 
@@ -468,12 +516,32 @@ DASHBOARD_HTML = r"""<!doctype html>
       toolsEl.replaceChildren(...tools.map(toolCard));
     }
 
+    function runLog(run) {
+      return [run.stdout, run.stderr ? "\n[stderr]\n" + run.stderr : ""].join("");
+    }
+
     function renderRuns(runs) {
+      if (!runs.length) {
+        latestLogEl.innerHTML = '<p class="empty-log">Run a command to see stdout and stderr here.</p>';
+      } else {
+        const latest = runs[0];
+        const log = runLog(latest) || "No output yet.";
+        latestLogEl.innerHTML = `
+          <div class="latest-log-head">
+            <span>
+              <strong>Latest Log</strong>
+              <span>${escapeHtml(latest.tool)} ${escapeHtml(latest.argv.join(" "))}</span>
+            </span>
+            <span class="state ${latest.status}">${latest.status}${latest.exit_code === null ? "" : ` ${latest.exit_code}`}${latest.duration_s === null ? "" : ` | ${latest.duration_s}s`}</span>
+          </div>
+          <pre>${escapeHtml(log)}</pre>
+        `;
+      }
       runsEl.replaceChildren(...runs.map((run, index) => {
         const details = document.createElement("details");
         details.className = "run";
         if (index === 0) details.open = true;
-        const log = [run.stdout, run.stderr ? "\n[stderr]\n" + run.stderr : ""].join("");
+        const log = runLog(run);
         details.innerHTML = `
           <summary>
             <span>

@@ -202,17 +202,21 @@ class FastApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.text
         self.assertIn('id="track-editor-frame"', html)
+        self.assertIn('id="latest-log"', html)
         self.assertIn('src="/tools/track_editor/track-editor.html"', html)
         self.assertNotIn("launch-editor", html)
 
     def test_serves_editor_assets_and_repository_data_from_the_gui_app(self) -> None:
         with self.make_client() as client:
             editor = client.get("/tools/track_editor/track-editor.html")
+            editor_css = client.get("/tools/track_editor/track-editor.css")
             index = client.get("/index.json")
             bundle = client.get("/tracks/daytona-tri-oval.json")
 
         self.assertEqual(editor.status_code, 200)
         self.assertIn("Track bundle editor", editor.text)
+        self.assertEqual(editor_css.status_code, 200)
+        self.assertIn(".empty-state[hidden] { display: none; }", editor_css.text)
         self.assertEqual(index.status_code, 200)
         self.assertEqual(index.json()["format"], "gt7-datalogger-track-index")
         self.assertEqual(bundle.status_code, 200)
