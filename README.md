@@ -83,6 +83,44 @@ Nobody's evidence replaces anybody else's: every observation is stamped with
 the installation that made it, so two people who each drove a metre once have
 seen it twice between them.
 
+## How this stays current
+
+Data arrives here two ways.
+
+**People surveying.** A pull request, reviewed, merged — the section above.
+This is the only way a bundle is ever created, and it is the only way the road
+itself gets better.
+
+**The vendored captures, refreshed on a schedule.** The 69 configurations
+nobody has surveyed have a signature only because
+[gt-telemetry](https://github.com/zetetos/gt-telemetry) published a recording
+of a lap of each. Those are vendored rather than fetched at build time, so a
+build is reproducible offline — which is right, and which used to mean the data
+only moved when somebody remembered to move it.
+
+`.github/workflows/vendor.yml` now does the remembering. Weekly, it re-fetches
+upstream, distils it, rebuilds `signatures.json`, runs the full check suite, and
+**merges the result itself when everything is clean**. Nothing in that path is a
+judgement, so nothing in it needs a person. It then asks the pack and the site
+to republish, because a merge made by a workflow does not start one.
+
+One case stops and waits: a capture whose name matches no configuration in
+`catalog/tracks.json`. That is either a circuit worth a row or an upstream
+rename worth a line in the generator's mapping table, and the file cannot tell
+which. The build refuses it rather than skipping it quietly, and the refresh
+opens a **draft pull request** with the new captures already on its branch, so
+the decision is the only work left. Any failing check does the same.
+
+So a silent week means upstream did not move, or moved and was fine. A pull
+request from the refresh means it is asking you something.
+
+Run it by hand with `gh workflow run vendor.yml`, or check upstream without
+changing anything:
+
+```bash
+python tools/vendor_captures.py --check
+```
+
 ## Repairing recorded points
 
 To inspect and correct bad edge records without re-surveying the circuit, run:

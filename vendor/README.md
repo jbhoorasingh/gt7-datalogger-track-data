@@ -37,15 +37,18 @@ python tools/vendor_captures.py --check    # fail if upstream has moved
 Both need network, and both print what moved — which circuits appeared,
 vanished, or were re-recorded — rather than only a count.
 
-`.github/workflows/vendor.yml` runs the refresh weekly and **opens a pull
-request** when upstream has moved. It never pushes to a branch anybody builds
-from: a capture is a road, and a road appearing or being re-driven should land
-as a diff a person read, not as a build that quietly starts describing
-somewhere else. If the new data includes a name that maps to no configuration,
-the signature build fails on purpose and that failure becomes the pull
-request's subject — the decision (a new catalog entry, or a line in
-`CAPTURE_NAME_FIXES`) is one for a person, and the re-vendored captures are
-already on the branch to make it on.
+`.github/workflows/vendor.yml` runs the refresh weekly. When upstream has moved
+and everything still passes, it rebuilds `signatures.json`, runs the whole check
+suite and **merges itself**, then asks the pack and the site to republish —
+a merge made by a workflow does not start one, so main would otherwise carry
+signatures that nothing published.
+
+It stops and opens a **draft pull request** when the new data includes a name
+that maps to no configuration, or when any check fails. The signature build
+refuses such a name on purpose: it is either a circuit worth a row or an
+upstream rename worth a line in `CAPTURE_NAME_FIXES`, and the file cannot tell
+which. The re-vendored captures are already on the branch, so making the call
+and pushing is the only work left.
 
 Neither command runs on an ordinary pull request. `build_signatures.py --check`
 is what guards the generated file there, offline, against whatever is vendored.

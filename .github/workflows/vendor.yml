@@ -7,10 +7,17 @@
 # a cost: the data only moves when somebody remembers to move it, and upstream
 # adding a circuit is exactly the thing this repository exists to notice.
 #
-# So this refreshes on a schedule and opens a pull request — never a push to
-# main. A capture is a road, and a road appearing, vanishing or being re-driven
-# should land as a diff a person read, not as a build that quietly started
-# describing somewhere else.
+# So this refreshes on a schedule and lands it itself when everything is clean:
+# the captures are re-vendored, the signatures rebuilt, the whole check suite
+# run, and only then is it merged. Nothing about that is a judgement, so
+# nothing about it needs a person.
+#
+# What does need a person is a capture that maps to no configuration — a new
+# name upstream is either a circuit worth a row or a rename worth a line in
+# CAPTURE_NAME_FIXES, and the file cannot tell which. That case, and any failing
+# check, stops here and leaves a draft pull request with the re-vendored data
+# already on its branch. The routine refresh is silent; the one carrying a
+# question is the one that reaches you.
 name: vendor
 
 on:
@@ -23,6 +30,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # To ask for pack and pages by name after merging — see the last step for
+  # why they have to be asked rather than triggered.
+  actions: write
 
 concurrency:
   group: vendor
@@ -97,7 +107,7 @@ jobs:
           cat checks.log
           echo "ok=$ok" >> "$GITHUB_OUTPUT"
 
-      - name: Open or update the pull request
+      - name: Land it, or ask for a decision
         if: steps.vendor.outputs.moved == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -106,9 +116,9 @@ jobs:
         run: |
           set -euo pipefail
           branch=auto/vendor-captures
-          needs_decision=0
+          clean=1
           if [ "$BUILD_STATUS" != "0" ] || [ "$CHECKS_OK" != "0" ]; then
-            needs_decision=1
+            clean=0
           fi
 
           {
@@ -120,17 +130,22 @@ jobs:
             cat vendor.log
             echo '```'
             echo
-            if [ "$BUILD_STATUS" = "0" ]; then
+            if [ "$clean" = "1" ]; then
               echo "## What that did to \`signatures.json\`"
             else
-              echo "## :warning: The signature build failed, and that is the point"
+              echo "## :warning: This one needs a decision"
               echo
-              echo "It refuses an upstream name it cannot place rather than"
-              echo "skipping it, because a new name is either a configuration"
-              echo "worth a row or a rename worth a line in"
-              echo "\`CAPTURE_NAME_FIXES\` — and both are decisions for a"
-              echo "person. Make that decision on this branch and push; the"
-              echo "re-vendored captures are already here."
+              if [ "$BUILD_STATUS" != "0" ]; then
+                echo "The signature build refuses an upstream name it cannot"
+                echo "place rather than skipping it, because a new name is"
+                echo "either a configuration worth a row or a rename worth a"
+                echo "line in \`CAPTURE_NAME_FIXES\` — and the file cannot tell"
+                echo "which. Make that call on this branch and push; the"
+                echo "re-vendored captures are already here."
+              else
+                echo "The refresh built, but a check below failed, so it was"
+                echo "not merged."
+              fi
             fi
             echo
             echo '```'
@@ -141,10 +156,10 @@ jobs:
             echo
             cat checks.log
             echo
-            echo "_Run in this job, not on the pull request: a pull request"
-            echo "opened with \`GITHUB_TOKEN\` does not start workflows, so"
-            echo "\`validate\` will not run on it by itself. Pushing any commit"
-            echo "of your own to this branch will start it._"
+            echo "_Run in this job, not on the pull request: one opened with"
+            echo "\`GITHUB_TOKEN\` does not start workflows, so \`validate\` will"
+            echo "not run on it by itself. Pushing any commit of your own to"
+            echo "this branch will start it._"
           } > body.md
 
           git config user.name "github-actions[bot]"
@@ -160,17 +175,50 @@ jobs:
           git push --force origin "$branch"
 
           title="Refresh the vendored captures from upstream"
-          if [ "$needs_decision" = "1" ]; then
+          if [ "$clean" != "1" ]; then
             title="$title (needs a decision)"
           fi
 
           if url=$(gh pr view "$branch" --json url --jq .url 2>/dev/null); then
-            gh pr edit "$branch" --title "$title" --body-file body.md
-            echo "updated $url"
+            gh pr edit "$branch" --title "$title" --body-file body.md > /dev/null
+          elif [ "$clean" = "1" ]; then
+            url=$(gh pr create --base main --head "$branch" \
+                    --title "$title" --body-file body.md)
           else
-            draft=""
-            if [ "$needs_decision" = "1" ]; then draft="--draft"; fi
-            # shellcheck disable=SC2086
-            gh pr create --base main --head "$branch" \
-              --title "$title" --body-file body.md $draft
+            url=$(gh pr create --base main --head "$branch" \
+                    --title "$title" --body-file body.md --draft)
           fi
+          echo "pull request: $url"
+
+          if [ "$clean" != "1" ]; then
+            echo "Left open. The build or a check needs a person."
+            exit 0
+          fi
+
+          # A run that left a draft behind can be cleaned up by a later one.
+          gh pr ready "$branch" > /dev/null 2>&1 || true
+
+          # Mergeability is computed asynchronously, so a pull request created
+          # a second ago is not always mergeable yet.
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge "$branch" --squash --delete-branch; then
+              merged=1
+              break
+            fi
+            echo "not mergeable yet (attempt $attempt)"
+            sleep 10
+          done
+          if [ "${merged:-0}" != "1" ]; then
+            echo "Could not merge. The pull request is open at $url."
+            exit 1
+          fi
+          echo "merged"
+
+          # A merge performed with GITHUB_TOKEN does NOT start workflows, so
+          # main would carry signatures that the download pack and the site
+          # never publish — the refresh would look done and be half done.
+          # workflow_dispatch is the documented exception to that rule, so ask
+          # for them by name.
+          gh workflow run pack.yml --ref main
+          gh workflow run pages.yml --ref main
+          echo "asked pack and pages to republish"
