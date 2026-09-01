@@ -108,7 +108,8 @@ def main(argv: list[str]) -> int:
         print("wrote", add(doc).relative_to(ROOT))
         added += 1
     if added:
-        print("\nnow run: python tools/build_index.py")
+        print("\nnext: gt7-tracks build-index, then gt7-tracks build-signatures\n"
+              "      (or python tools/build_index.py, python tools/build_signatures.py)")
     return 0 if added else 1
 
 

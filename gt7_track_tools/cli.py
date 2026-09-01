@@ -45,6 +45,22 @@ def add_bundle(
     _run("add-bundle", arguments=args, options=options)
 
 
+@app.command("pull-from-app")
+def pull_from_app(
+    base: Optional[str] = typer.Argument(None, help="App base URL."),
+    listing: bool = typer.Option(False, "--list", help="Show what the app has and write nothing."),
+    only: Optional[str] = typer.Option(None, "--only", help="Pull only matching bundle slugs."),
+    token: Optional[str] = typer.Option(None, "--token", help="Admin API token."),
+) -> None:
+    """Browse a running datalogger and merge its surveyed tracks into tracks/."""
+    options: dict[str, object] = {"listing": listing}
+    if only is not None:
+        options["only"] = only
+    if token is not None:
+        options["token"] = token
+    _run("pull-from-app", arguments=[base] if base else [], options=options)
+
+
 @app.command("build-index")
 def build_index(
     check: bool = typer.Option(False, "--check", help="Check index.json without writing."),

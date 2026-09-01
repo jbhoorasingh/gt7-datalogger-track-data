@@ -45,6 +45,9 @@ jobs:
       - name: Test the local track editor launcher
         run: python tools/track_editor/test_launcher.py
 
+      - name: Test talking to a running app
+        run: python tools/test_app_client.py
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

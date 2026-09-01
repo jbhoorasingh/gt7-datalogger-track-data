@@ -56,8 +56,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     }
     .primary:hover:not(:disabled) { background: #8aecd4; border-color: #8aecd4; }
     .app-header {
-      min-height: 7.25rem;
-      padding: 1.25rem 1.5rem;
+      padding: 1rem 1.5rem;
       border-bottom: 1px solid var(--line);
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -94,12 +93,23 @@ DASHBOARD_HTML = r"""<!doctype html>
       border-color: var(--accent);
       font-weight: 700;
     }
+    body {
+      height: 100vh;
+      display: grid;
+      /* An explicit full-width column. Without one the single column is `auto`,
+         which sizes to its content — and the editor view's only content is an
+         iframe, whose intrinsic width is 300px. The whole page then collapsed
+         to that, header and all, and the editor showed as a sliver. */
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
     main {
-      height: calc(100vh - 7.25rem);
-      min-height: 32rem;
+      min-width: 0;
+      min-height: 0;
       padding: 1rem;
     }
-    .view { height: 100%; }
+    .view { height: 100%; min-width: 0; min-height: 0; }
     .view[hidden] { display: none; }
     .tools-layout {
       display: grid;
@@ -145,6 +155,68 @@ DASHBOARD_HTML = r"""<!doctype html>
       color: var(--dim);
       font-size: 0.8rem;
     }
+    .tool p.when { color: #9fb4c8; }
+    .tool p.when::before { content: "When: "; color: var(--accent-2); }
+    .group-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      margin: 1.1rem 0 0.55rem;
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .group-heading:first-child { margin-top: 0; }
+    .group-heading::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .hint {
+      color: #657386;
+      font: 0.68rem/1.3 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+    .field-help { color: #7d8b9d; font-size: 0.68rem; }
+    .next-steps {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.55rem;
+      padding-top: 0.55rem;
+      border-top: 1px dashed var(--line);
+      color: var(--dim);
+      font-size: 0.75rem;
+    }
+    .next-steps button { min-height: 1.9rem; padding: 0.25rem 0.55rem; font-size: 0.75rem; }
+    .app-panel { margin-bottom: 0.75rem; }
+    .app-intro { margin: 0.35rem 0 0.6rem; color: var(--dim); font-size: 0.8rem; }
+    .app-panel .field-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem; }
+    .app-list {
+      max-height: 15rem;
+      overflow: auto;
+      margin-top: 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 0.55rem;
+      background: #0c1219;
+    }
+    .app-row {
+      display: grid;
+      grid-template-columns: 1rem minmax(0, 1fr);
+      gap: 0.5rem;
+      align-items: start;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .app-row:last-child { border-bottom: 0; }
+    .app-row input { width: 1rem; min-height: 1rem; margin: 0.15rem 0 0; accent-color: var(--accent-2); }
+    .app-row b { display: block; font-weight: 600; }
+    .app-row small { color: var(--dim); font-variant-numeric: tabular-nums; }
+    .app-row.blocked b { color: #9aa7b6; }
+    .app-row .why { color: var(--warn); }
+    .app-actions { display: flex; gap: 0.45rem; margin-top: 0.6rem; }
+    .app-actions .primary { flex: 1; }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -314,35 +386,34 @@ DASHBOARD_HTML = r"""<!doctype html>
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    /* Same trap one level down: a bare `display: grid` around an iframe sizes
+       its column to the iframe's intrinsic width. */
     .editor-layout {
       height: 100%;
+      min-width: 0;
       min-height: 0;
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-      gap: 0.75rem;
-    }
-    .editor-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      flex-wrap: wrap;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
     }
     .editor-frame {
       width: 100%;
       height: 100%;
-      min-height: 28rem;
+      min-height: 0;
       border: 1px solid var(--line);
       border-radius: 0.8rem;
       background: #0c1219;
     }
     @media (max-width: 900px) {
-      .app-header { min-height: auto; grid-template-columns: 1fr; align-items: start; }
-      main { height: auto; min-height: 0; }
+      /* Stacked and scrolling is the right shape on a narrow window, so the
+         page gets its scrollbar back here and only here. */
+      body { height: auto; overflow: auto; }
+      .app-header { grid-template-columns: 1fr; align-items: start; }
       .tools-layout { grid-template-columns: 1fr; height: auto; }
       .tools-column, .runs-column { overflow: visible; }
       .runs-column .panel { height: auto; }
-      .editor-frame { height: 72vh; }
+      .editor-layout { height: auto; }
+      .editor-frame { height: 78vh; min-height: 30rem; }
     }
   </style>
 </head>
@@ -351,7 +422,7 @@ DASHBOARD_HTML = r"""<!doctype html>
     <div>
       <p class="eyebrow">Local tool</p>
       <h1>GT7 Track Tools</h1>
-      <p class="intro">Run repository maintenance commands and repair bundle geometry from the same loopback session.</p>
+      <p class="intro">Pull surveyed tracks out of your own datalogger, rebuild what depends on them, and repair bundle geometry — all from one loopback session.</p>
     </div>
     <nav class="tabs" aria-label="Tool views">
       <button class="tab" type="button" data-view="tools" aria-selected="true">Commands</button>
@@ -360,7 +431,23 @@ DASHBOARD_HTML = r"""<!doctype html>
   </header>
   <main>
     <section id="tools-view" class="view tools-layout">
-      <div class="tools-column" id="tools"></div>
+      <div class="tools-column">
+        <section class="panel app-panel">
+          <h2>Your datalogger</h2>
+          <p class="app-intro">Browse a running app and pull the tracks you want. Reading only — nothing here changes your live survey.</p>
+          <div class="field-row">
+            <input id="app-base" type="url" value="http://localhost:8000" placeholder="http://gt7.local:8000" aria-label="App address">
+            <button id="app-connect" type="button">Connect</button>
+          </div>
+          <p id="app-status" class="status"></p>
+          <div id="app-list" class="app-list" hidden></div>
+          <div id="app-actions" class="app-actions" hidden>
+            <button id="app-pull" class="primary" type="button" disabled>Pull selected</button>
+            <button id="app-all" type="button">Select all</button>
+          </div>
+        </section>
+        <div id="tools"></div>
+      </div>
       <section class="runs-column">
         <div class="panel">
           <div class="run-head">
@@ -375,17 +462,11 @@ DASHBOARD_HTML = r"""<!doctype html>
       </section>
     </section>
     <section id="editor-view" class="view editor-layout" hidden>
-      <div class="panel editor-toolbar">
-        <div>
-          <h2>Track Bundle Editor</h2>
-        </div>
-        <button id="reload-editor" type="button">Reload editor</button>
-      </div>
       <iframe
         id="track-editor-frame"
         class="editor-frame"
         title="Track bundle editor"
-        src="/tools/track_editor/track-editor.html?v=empty-state-hide"
+        src="/tools/track_editor/track-editor.html?v=side-cues"
       ></iframe>
     </section>
   </main>
@@ -393,8 +474,12 @@ DASHBOARD_HTML = r"""<!doctype html>
     const toolsEl = document.querySelector("#tools");
     const runsEl = document.querySelector("#runs");
     const latestLogEl = document.querySelector("#latest-log");
-    const editorFrame = document.querySelector("#track-editor-frame");
     let polling = null;
+    let toolsById = {};
+    // run id -> what to do once that run finishes. This is how a card knows
+    // to offer "now rebuild the index" only after the thing that made the
+    // index stale actually succeeded.
+    const awaiting = new Map();
 
     async function jsonFetch(url, options = {}) {
       const response = await fetch(url, {
@@ -418,6 +503,17 @@ DASHBOARD_HTML = r"""<!doctype html>
       document.querySelector("#editor-view").hidden = name !== "editor";
     }
 
+    // Every field says what it is in words, with the flag it becomes shown
+    // beside it. The flag still matters — a GUI run and a typed run must be
+    // the same run — but "--check" is a fact about argparse, not a label.
+    function fieldTitle(option) {
+      return `${escapeHtml(option.label)} <span class="hint">${escapeHtml(option.flag)}</span>`;
+    }
+
+    function fieldHelp(text) {
+      return text ? `<span class="field-help">${escapeHtml(text)}</span>` : "";
+    }
+
     function optionInput(tool, option) {
       const id = `${tool.id}-${option.name}`;
       const label = document.createElement("label");
@@ -425,11 +521,17 @@ DASHBOARD_HTML = r"""<!doctype html>
       label.dataset.kind = option.kind;
       if (option.kind === "flag") {
         label.className = "check";
-        label.innerHTML = `<input id="${id}" type="checkbox"><span>${option.flag}</span>`;
+        label.innerHTML = `<input id="${id}" type="checkbox"><span>${fieldTitle(option)}</span>`;
+        label.title = option.help || "";
       } else if (option.kind === "optional_value") {
-        label.innerHTML = `<span>${option.flag}</span><span class="optional-row"><input data-enable type="checkbox" title="use default"><input data-value id="${id}" type="text" placeholder="${option.metavar || ""}"></span>`;
+        label.innerHTML = `<span>${fieldTitle(option)}</span>`
+          + `<span class="optional-row"><input data-enable type="checkbox" title="Use the default"><input data-value id="${id}" type="text" placeholder="${escapeHtml(option.metavar || "")}"></span>`
+          + fieldHelp(option.help);
       } else {
-        label.innerHTML = `<span>${option.flag}</span><input id="${id}" ${option.secret ? "type=\"password\"" : "type=\"text\""} placeholder="${option.metavar || ""}">`;
+        const type = option.secret ? "password" : "text";
+        label.innerHTML = `<span>${fieldTitle(option)}</span>`
+          + `<input id="${id}" type="${type}" placeholder="${escapeHtml(option.metavar || "")}">`
+          + fieldHelp(option.help);
       }
       return label;
     }
@@ -442,6 +544,7 @@ DASHBOARD_HTML = r"""<!doctype html>
           <div>
             <h2>${escapeHtml(tool.title)}</h2>
             <p>${escapeHtml(tool.description)}</p>
+            ${tool.when ? `<p class="when">${escapeHtml(tool.when)}</p>` : ""}
           </div>
           <span class="pill ${tool.mutates ? "write" : ""}">${tool.mutates ? "writes" : "read-only"}</span>
         </div>
@@ -453,7 +556,10 @@ DASHBOARD_HTML = r"""<!doctype html>
         const label = document.createElement("label");
         label.dataset.argument = argument.name;
         label.dataset.multiple = argument.multiple ? "true" : "false";
-        label.innerHTML = `<span>${escapeHtml(argument.name)}</span><input type="text" placeholder="${argument.multiple ? "space-separated values" : (argument.default || "")}">`;
+        const placeholder = argument.placeholder || (argument.multiple ? "one path per space" : "");
+        label.innerHTML = `<span>${escapeHtml(argument.label)}</span>`
+          + `<input type="text" placeholder="${escapeHtml(placeholder)}">`
+          + fieldHelp(argument.help);
         fields.appendChild(label);
       }
       for (const option of tool.options) fields.appendChild(optionInput(tool, option));
@@ -462,16 +568,43 @@ DASHBOARD_HTML = r"""<!doctype html>
       const actions = document.createElement("div");
       actions.className = "tool-actions";
       const button = document.createElement("button");
-      button.className = "primary";
+      button.className = "primary run-button";
       button.textContent = "Run";
       const status = document.createElement("div");
       status.className = "status";
-      actions.append(button, status);
+      const nextSteps = document.createElement("div");
+      nextSteps.className = "next-steps";
+      nextSteps.hidden = true;
+      actions.append(button, status, nextSteps);
       node.appendChild(actions);
+      node.dataset.toolId = tool.id;
+
+      function offerNextSteps(run) {
+        const steps = (tool.next_steps || []).filter((id) => toolsById[id]);
+        if (run.status !== "succeeded" || !steps.length) {
+          nextSteps.hidden = true;
+          return;
+        }
+        nextSteps.replaceChildren();
+        const label = document.createElement("span");
+        label.textContent = "That made these stale:";
+        nextSteps.append(label);
+        for (const id of steps) {
+          const step = document.createElement("button");
+          step.textContent = toolsById[id].title;
+          step.addEventListener("click", () => {
+            nextSteps.hidden = true;
+            runToolById(id);
+          });
+          nextSteps.append(step);
+        }
+        nextSteps.hidden = false;
+      }
 
       button.addEventListener("click", async () => {
         button.disabled = true;
         status.textContent = "Starting";
+        nextSteps.hidden = true;
         try {
           const argumentsList = [];
           for (const field of node.querySelectorAll("[data-argument]")) {
@@ -495,11 +628,17 @@ DASHBOARD_HTML = r"""<!doctype html>
               options[name] = input.value.trim();
             }
           }
-          await jsonFetch("/api/runs", {
+          const {run} = await jsonFetch("/api/runs", {
             method: "POST",
             body: JSON.stringify({tool: tool.id, arguments: argumentsList, options}),
           });
           status.textContent = "Queued";
+          awaiting.set(run.id, (finished) => {
+            status.textContent = finished.status === "succeeded"
+              ? `Done in ${finished.duration_s}s`
+              : `Failed (exit ${finished.exit_code}) — the log is on the right`;
+            offerNextSteps(finished);
+          });
           await refreshRuns();
           startPolling();
         } catch (error) {
@@ -511,9 +650,31 @@ DASHBOARD_HTML = r"""<!doctype html>
       return node;
     }
 
+    function runToolById(id) {
+      const card = toolsEl.querySelector(`[data-tool-id="${CSS.escape(id)}"]`);
+      if (!card) return;
+      card.scrollIntoView({block: "nearest", behavior: "smooth"});
+      card.querySelector(".run-button").click();
+    }
+
     async function loadTools() {
-      const {tools} = await jsonFetch("/api/tools");
-      toolsEl.replaceChildren(...tools.map(toolCard));
+      const {tools, groups} = await jsonFetch("/api/tools");
+      toolsById = Object.fromEntries(tools.map((tool) => [tool.id, tool]));
+      const nodes = [];
+      // Grouped in the order the work happens. Alphabetical put "Add Bundle"
+      // above "Build Index" by luck rather than by meaning, and put the two
+      // commands that talk to somebody's live app in among the ones that
+      // rewrite files here.
+      for (const group of groups || []) {
+        const heading = document.createElement("h2");
+        heading.className = "group-heading";
+        heading.textContent = group.title;
+        nodes.push(heading);
+        nodes.push(...tools.filter((tool) => tool.group === group.id).map(toolCard));
+      }
+      const grouped = new Set((groups || []).map((group) => group.id));
+      nodes.push(...tools.filter((tool) => !grouped.has(tool.group)).map(toolCard));
+      toolsEl.replaceChildren(...nodes);
     }
 
     function runLog(run) {
@@ -559,6 +720,13 @@ DASHBOARD_HTML = r"""<!doctype html>
     async function refreshRuns() {
       const {runs} = await jsonFetch("/api/runs");
       renderRuns(runs);
+      for (const run of runs) {
+        if (run.status !== "succeeded" && run.status !== "failed") continue;
+        const settle = awaiting.get(run.id);
+        if (!settle) continue;
+        awaiting.delete(run.id);
+        settle(run);
+      }
       return runs.some((run) => run.status === "queued" || run.status === "running");
     }
 
@@ -580,10 +748,114 @@ DASHBOARD_HTML = r"""<!doctype html>
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => setView(tab.dataset.view));
     });
-    document.querySelector("#refresh").addEventListener("click", refreshRuns);
-    document.querySelector("#reload-editor").addEventListener("click", () => {
-      editorFrame.contentWindow?.location.reload();
+    // --- your datalogger, browsed rather than typed --------------------
+    //
+    // The same job as `pull-from-app`, and it runs that exact tool: the
+    // difference is that you pick from a list instead of running it once to
+    // read the log and again with --only.
+
+    const appBaseEl = document.querySelector("#app-base");
+    const appStatusEl = document.querySelector("#app-status");
+    const appListEl = document.querySelector("#app-list");
+    const appActionsEl = document.querySelector("#app-actions");
+    const appPullEl = document.querySelector("#app-pull");
+
+    function appSelection() {
+      return [...appListEl.querySelectorAll("input:checked")].map((input) => input.value);
+    }
+
+    function syncAppActions() {
+      const chosen = appSelection().length;
+      appPullEl.disabled = chosen === 0;
+      appPullEl.textContent = chosen
+        ? `Pull ${chosen} track${chosen === 1 ? "" : "s"}`
+        : "Pull selected";
+    }
+
+    function renderAppTracks(tracks) {
+      appListEl.replaceChildren(...tracks.map((track) => {
+        const row = document.createElement("label");
+        // A bundle whose layout the app has not confirmed cannot be filed
+        // here, so it is shown and disabled rather than quietly missing.
+        const blocked = !track.official_id;
+        row.className = `app-row${blocked ? " blocked" : ""}`;
+        const facts = [
+          track.points ? `${track.points.toLocaleString()} m` : "no border yet",
+          track.runs ? `${track.runs} run${track.runs === 1 ? "" : "s"}` : "",
+          track.updated_at ? track.updated_at.slice(0, 10) : "",
+        ].filter(Boolean).join(" · ");
+        row.innerHTML = `
+          <input type="checkbox" value="${escapeHtml(track.slug)}"${blocked ? " disabled" : ""}>
+          <span>
+            <b>${escapeHtml(track.official_name || track.track || track.slug)}</b>
+            <small>${escapeHtml(facts)}</small>
+            ${blocked ? '<small class="why">Confirm its layout in the app before it can be filed here.</small>' : ""}
+          </span>
+        `;
+        row.querySelector("input").addEventListener("change", syncAppActions);
+        return row;
+      }));
+      appListEl.hidden = tracks.length === 0;
+      appActionsEl.hidden = tracks.length === 0;
+      syncAppActions();
+    }
+
+    async function connectToApp() {
+      const base = appBaseEl.value.trim();
+      appStatusEl.textContent = "Connecting…";
+      appListEl.hidden = true;
+      appActionsEl.hidden = true;
+      try {
+        const data = await jsonFetch(`/api/app/tracks?base=${encodeURIComponent(base)}`);
+        renderAppTracks(data.tracks || []);
+        appStatusEl.textContent = data.tracks.length
+          ? `${data.tracks.length} track${data.tracks.length === 1 ? "" : "s"} on ${data.base}.`
+          : `${data.base} has no track bundles yet.`;
+      } catch (error) {
+        appStatusEl.textContent = error.message;
+      }
+    }
+
+    async function pullSelected() {
+      const slugs = appSelection();
+      const base = appBaseEl.value.trim();
+      if (!slugs.length) return;
+      appPullEl.disabled = true;
+      try {
+        // One run per track, each with the real argv you would have typed.
+        for (const slug of slugs) {
+          await jsonFetch("/api/runs", {
+            method: "POST",
+            body: JSON.stringify({
+              tool: "pull-from-app",
+              arguments: [base],
+              options: {only: slug},
+            }),
+          });
+        }
+        appStatusEl.textContent = `Pulling ${slugs.length} track(s) — see Runs.`;
+        await refreshRuns();
+        startPolling();
+      } catch (error) {
+        appStatusEl.textContent = error.message;
+      } finally {
+        syncAppActions();
+      }
+    }
+
+    document.querySelector("#app-connect").addEventListener("click", connectToApp);
+    appBaseEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); connectToApp(); }
     });
+    appPullEl.addEventListener("click", pullSelected);
+    document.querySelector("#app-all").addEventListener("click", () => {
+      const inputs = [...appListEl.querySelectorAll("input:not(:disabled)")];
+      const turnOn = inputs.some((input) => !input.checked);
+      inputs.forEach((input) => { input.checked = turnOn; });
+      syncAppActions();
+    });
+
+    document.querySelector("#refresh").addEventListener("click", refreshRuns);
 
     loadTools().then(refreshRuns).then((active) => { if (active) startPolling(); });
   </script>

@@ -4,112 +4,184 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GT7 track bundle editor</title>
-    <link rel="stylesheet" href="./track-editor.css?v=empty-state-hide" />
+    <link rel="stylesheet" href="./track-editor.css?v=side-cues" />
   </head>
   <body>
-    <header class="app-header">
-      <div>
-        <p class="eyebrow">Local tool</p>
-        <h1>Track bundle editor</h1>
-        <p class="intro">Repair edge records visually, then download a corrected copy. Source files are never overwritten.</p>
+    <!--
+      Two thin strips and then nothing but canvas. The panels that used to sit
+      in a permanent sidebar are popovers and contextual bars now: the sidebar
+      held more than a screenful, so the tool palette — the thing you touch on
+      every single edit — sat below the fold, while a paragraph you read once
+      kept its place at the top forever.
+    -->
+    <header class="bar">
+      <div class="bar-group">
+        <button id="open-toggle" class="menu" type="button" aria-expanded="false" aria-controls="open-panel">
+          Open <span aria-hidden="true">▾</span>
+        </button>
+        <div id="document-summary" class="document-summary" hidden>
+          <strong id="document-name"></strong>
+          <span id="document-count"></span>
+        </div>
       </div>
-      <div id="document-summary" class="document-summary" hidden>
-        <strong id="document-name"></strong>
-        <span id="document-count"></span>
+
+      <div id="editing-controls" class="bar-group" hidden>
+        <button id="undo" type="button" title="Undo — Ctrl/Cmd+Z" disabled>Undo</button>
+        <button id="redo" type="button" title="Redo — Ctrl/Cmd+Shift+Z" disabled>Redo</button>
+        <button id="reset" type="button" title="Restore the bundle as it was loaded">Reset</button>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <button id="save-to-tracks" class="primary" type="button" hidden>Save into tracks/</button>
+        <button id="download" type="button">Download</button>
       </div>
     </header>
 
-    <main>
-      <aside class="sidebar" aria-label="Editor controls">
-        <section class="panel source-panel">
-          <h2>Open a bundle</h2>
-          <label for="track-select">Repository track</label>
-          <div class="field-row">
-            <select id="track-select">
-              <option value="">Choose a track…</option>
-            </select>
-            <button id="load-track" type="button" disabled>Load</button>
-          </div>
-          <div class="divider"><span>or</span></div>
-          <label class="file-button" for="file-input">Import bundle JSON</label>
-          <input id="file-input" type="file" accept="application/json,.json" />
-          <p class="help">Use import for bundles that are not in <code>tracks/</code>.</p>
-        </section>
-
-        <div id="editing-controls" hidden>
-          <section class="panel">
-            <div class="section-heading">
-              <h2>View</h2>
-              <button id="fit-view" class="quiet" type="button">Fit track</button>
-            </div>
-            <fieldset>
-              <legend>Side</legend>
-              <label class="check"><input type="checkbox" data-side="L" checked /> Left</label>
-              <label class="check"><input type="checkbox" data-side="R" checked /> Right</label>
-            </fieldset>
-            <fieldset>
-              <legend>Point type</legend>
-              <label class="check"><input type="checkbox" data-kind="edge" checked /><i class="swatch edge"></i> Edge</label>
-              <label class="check"><input type="checkbox" data-kind="wall" checked /><i class="swatch wall"></i> Wall</label>
-              <label class="check"><input type="checkbox" data-kind="runoff" checked /><i class="swatch runoff"></i> Run-off</label>
-              <label class="check"><input type="checkbox" data-kind="auto" checked /><i class="swatch auto"></i> Auto</label>
-              <label class="check"><input type="checkbox" data-kind="straddle" checked /><i class="swatch straddle"></i> Straddle</label>
-            </fieldset>
-          </section>
-
-          <section class="panel">
-            <h2>Select points</h2>
-            <div class="tool-grid" role="group" aria-label="Pointer tool">
-              <button class="tool active" type="button" data-tool="select" aria-pressed="true">Click</button>
-              <button class="tool" type="button" data-tool="brush-add" aria-pressed="false">Brush +</button>
-              <button class="tool" type="button" data-tool="brush-remove" aria-pressed="false">Brush −</button>
-              <button class="tool" type="button" data-tool="pan" aria-pressed="false">Pan</button>
-            </div>
-            <label for="brush-size">Brush radius <output id="brush-output">18 px</output></label>
-            <input id="brush-size" type="range" min="6" max="60" value="18" />
-            <p class="help">The brush affects only visible points. Use the mouse wheel to zoom.</p>
-            <div class="selection-summary">
-              <strong id="selected-count">0</strong>
-              <span>points selected</span>
-              <button id="clear-selection" class="quiet" type="button" disabled>Clear</button>
-            </div>
-          </section>
-
-          <section class="panel actions">
-            <h2>Edit selection</h2>
-            <div class="field-row">
-              <select id="relabel-kind" aria-label="New point type">
-                <option value="edge">Edge</option>
-                <option value="wall">Wall</option>
-                <option value="runoff">Run-off</option>
-              </select>
-              <button id="relabel" type="button" disabled>Relabel</button>
-            </div>
-            <button id="delete-selection" class="danger" type="button" disabled>Delete selected points</button>
-            <div class="history-row">
-              <button id="undo" class="quiet" type="button" disabled>Undo</button>
-              <button id="redo" class="quiet" type="button" disabled>Redo</button>
-              <button id="reset" class="quiet" type="button">Reset</button>
-            </div>
-            <button id="download" class="primary" type="button">Download corrected JSON</button>
-          </section>
-        </div>
-      </aside>
-
-      <section class="workspace" aria-label="Track visualization">
-        <div id="empty-state" class="empty-state">
-          <div class="empty-mark" aria-hidden="true">⌁</div>
-          <h2>Choose a repository track or import a bundle</h2>
-          <p>The editor plots the game’s x/z coordinates without changing their scale or shape.</p>
-        </div>
-        <div id="canvas-shell" class="canvas-shell" hidden>
-          <canvas id="track-canvas" tabindex="0" aria-label="Editable track point map"></canvas>
-          <div class="canvas-help">Wheel: zoom · Pan tool or middle-drag: move · Esc: clear selection · Delete: remove · Ctrl/Cmd+Z: undo</div>
+    <div id="open-panel" class="popover open-panel" hidden>
+      <section>
+        <label for="track-select">Repository track</label>
+        <div class="field-row">
+          <select id="track-select">
+            <option value="">Choose a track…</option>
+          </select>
+          <button id="load-track" type="button" disabled>Load</button>
         </div>
       </section>
+      <section>
+        <label for="app-base">Running datalogger</label>
+        <div class="field-row">
+          <input id="app-base" type="url" value="http://localhost:8000" placeholder="http://gt7.local:8000" />
+          <button id="app-connect" type="button">Connect</button>
+        </div>
+        <p id="app-status" class="help">Pull a surveyed track straight out of your own app.</p>
+        <div id="app-picker" hidden>
+          <div class="field-row">
+            <select id="app-select"></select>
+            <button id="app-load" type="button" disabled>Load</button>
+          </div>
+        </div>
+      </section>
+      <section>
+        <label class="file-button" for="file-input">Import bundle JSON</label>
+        <input id="file-input" type="file" accept="application/json,.json" />
+        <p class="help">For bundles that are not in <code>tracks/</code>.</p>
+      </section>
+    </div>
+
+    <div id="tool-strip" class="strip" hidden>
+      <div class="tool-grid" role="group" aria-label="Pointer tool">
+        <button class="tool active" type="button" data-tool="select" aria-pressed="true" title="Click — V">Click</button>
+        <button class="tool" type="button" data-tool="lasso" aria-pressed="false" title="Lasso — L">Lasso</button>
+        <button class="tool" type="button" data-tool="brush" aria-pressed="false" title="Brush — B (hold Shift to unselect)">Brush</button>
+        <button class="tool draws" type="button" data-tool="pen" aria-pressed="false" title="Pen — P">Pen</button>
+        <button class="tool draws" type="button" data-tool="curve" aria-pressed="false" title="Curve — C">Curve</button>
+        <button class="tool draws" type="button" data-tool="freehand" aria-pressed="false" title="Freehand — F">Freehand</button>
+        <button class="tool draws" type="button" data-tool="connect" aria-pressed="false" title="Connect two records across a gap — K">Connect</button>
+        <button class="tool" type="button" data-tool="pan" aria-pressed="false" title="Pan — H">Pan</button>
+      </div>
+
+      <span class="bar-divider" aria-hidden="true"></span>
+
+      <!-- Only the active tool's own options are on screen. -->
+      <div id="brush-controls" class="strip-group" hidden>
+        <label for="brush-size">Radius</label>
+        <input id="brush-size" type="range" min="1" max="40" step="1" value="5" />
+        <output id="brush-output">5 m</output>
+      </div>
+
+      <div id="draw-controls" class="strip-group" hidden>
+        <select id="draw-side" aria-label="Side of the road">
+          <option value="L">Left side</option>
+          <option value="R">Right side</option>
+        </select>
+        <select id="draw-kind" aria-label="Point type to draw">
+          <option value="edge">Edge</option>
+          <option value="wall">Wall</option>
+          <option value="runoff">Run-off</option>
+        </select>
+        <label for="draw-spacing">Every</label>
+        <input id="draw-spacing" type="range" min="1" max="10" step="1" value="1" />
+        <output id="draw-spacing-output">1 m</output>
+        <button id="draw-commit" class="primary" type="button" disabled>Add points</button>
+        <button id="draw-cancel" type="button" disabled>Discard</button>
+      </div>
+
+      <!-- Shaping controls, only for the connector. -->
+      <div id="connect-controls" class="strip-group" hidden>
+        <span class="bar-divider" aria-hidden="true"></span>
+        <output id="connect-side" class="inherited">Pick two records</output>
+        <label for="connect-tension">Curve</label>
+        <input id="connect-tension" type="range" min="0" max="100" step="5" value="50" />
+        <output id="connect-tension-output">50%</output>
+        <label for="connect-push">Push</label>
+        <input id="connect-push" type="range" min="1" max="60" step="1" value="12" />
+        <output id="connect-push-output">12 m</output>
+      </div>
+
+      <div class="strip-spacer"></div>
+
+      <button id="layers-toggle" class="menu" type="button" aria-expanded="false" aria-controls="layers-panel">
+        Layers <span aria-hidden="true">▾</span>
+      </button>
+      <span class="bar-divider" aria-hidden="true"></span>
+      <div class="strip-group zoom-group">
+        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+        <button id="fit-view" type="button" title="Fit the whole circuit — 0">Fit</button>
+        <button id="zoom-selection" type="button" disabled>To selection</button>
+        <output id="zoom-readout" class="readout">100%</output>
+      </div>
+    </div>
+
+    <div id="layers-panel" class="popover layers-panel" hidden>
+      <fieldset>
+        <legend>Side</legend>
+        <label class="check"><input type="checkbox" data-side="L" checked /><i class="shape left"></i> Left — squares</label>
+        <label class="check"><input type="checkbox" data-side="R" checked /><i class="shape right"></i> Right — circles</label>
+      </fieldset>
+      <fieldset>
+        <legend>Point type</legend>
+        <label class="check"><input type="checkbox" data-kind="edge" checked /><i class="swatch edge"></i> Edge</label>
+        <label class="check"><input type="checkbox" data-kind="wall" checked /><i class="swatch wall"></i> Wall</label>
+        <label class="check"><input type="checkbox" data-kind="runoff" checked /><i class="swatch runoff"></i> Run-off</label>
+        <label class="check"><input type="checkbox" data-kind="auto" checked /><i class="swatch auto"></i> Auto</label>
+        <label class="check"><input type="checkbox" data-kind="straddle" checked /><i class="swatch straddle"></i> Straddle</label>
+      </fieldset>
+      <p class="help">Hidden points cannot be selected, brushed or lassoed.</p>
+    </div>
+
+    <main class="workspace" aria-label="Track visualization">
+      <div id="empty-state" class="empty-state">
+        <div class="empty-mark" aria-hidden="true">⌁</div>
+        <h2>Track bundle editor</h2>
+        <p>Open a repository track, pull one from a running datalogger, or import a bundle file. Select and repair points, or draw the border where nobody has driven yet.</p>
+        <button id="empty-open" class="primary" type="button">Open a bundle</button>
+      </div>
+
+      <div id="canvas-shell" class="canvas-shell" hidden>
+        <canvas id="track-canvas" tabindex="0" aria-label="Editable track point map"></canvas>
+        <div class="canvas-footer">
+          <div class="scale-bar"><span id="scale-bar-rule"></span><span id="scale-bar-label"></span></div>
+          <div class="canvas-help" id="canvas-help"></div>
+
+          <!-- Appears only when there is a selection to act on. -->
+          <div id="selection-bar" class="selection-bar" hidden>
+            <strong id="selected-count">0</strong>
+            <span>selected</span>
+            <select id="relabel-kind" aria-label="New point type">
+              <option value="edge">Edge</option>
+              <option value="wall">Wall</option>
+              <option value="runoff">Run-off</option>
+            </select>
+            <button id="relabel" type="button" disabled>Relabel</button>
+            <button id="delete-selection" class="danger" type="button" disabled>Delete</button>
+            <button id="clear-selection" type="button" disabled>Clear</button>
+          </div>
+        </div>
+
+        <p id="draw-provenance" class="provenance" hidden></p>
+      </div>
     </main>
 
     <div id="message" class="message" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./track-editor.mjs?v=empty-state-hide"></script>
+    <script type="module" src="./track-editor.mjs?v=side-cues"></script>
   </body>
 </html>
