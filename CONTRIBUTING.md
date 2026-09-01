@@ -34,17 +34,24 @@ thing in a bundle after the borders themselves.
 Nothing to install — the tools are standard-library Python 3.12.
 
 ```bash
+# See what your running app has, without writing anything:
+python tools/pull_from_app.py http://gt7.local:8000 --list
+
+# Then take one, or all of them:
+python tools/pull_from_app.py http://gt7.local:8000 --only deep-forest
+# ...or start from a file you exported:
 python tools/add_bundle.py ~/Downloads/deep-forest-raceway.json
-# ...or pull everything straight out of a running app:
-python tools/add_bundle.py --from-app http://gt7.local:8000
 
 python tools/build_index.py
 python tools/build_signatures.py
 ```
 
-`add_bundle.py` validates the file, names it after its configuration, and
-writes it in this repository's canonical form. If a bundle for that
-configuration is already here, the two are **merged**.
+Either route validates the file, names it after its configuration, and writes
+it in this repository's canonical form. If a bundle for that configuration is
+already here, the two are **merged**.
+
+`pull_from_app.py` only ever reads your app. It is the mirror of
+`import_into_app.py`, which is the one that writes to it.
 
 Then open a pull request.
 
@@ -122,9 +129,39 @@ none. The round trip is the intended workflow:
 1. Pull the circuit's shared bundle in the app (Tracks → **Shared bundles**),
    or import it from the pack.
 2. Drive — more laps, missing borders, corner labels.
-3. `python tools/add_bundle.py --from-app http://gt7.local:8000`, rebuild the
-   index, open a pull request. The diff is only the metres and votes you
+3. `python tools/pull_from_app.py http://gt7.local:8000 --only <slug>`, rebuild
+   the index, open a pull request. The diff is only the metres and votes you
    added, which is what makes it reviewable.
+
+## Drawn metres
+
+The track editor (`python tools/track_editor.py`) can *draw* border geometry —
+pen, curve, freehand and connect tools that lay records down every metre along
+a path.
+That is a different kind of thing from the rest of a bundle: an edge record is
+normally evidence that somebody drove past that metre, and a drawn one is
+somebody's opinion about where the road is.
+
+So drawn points are filed under a source id of their own, `drawn-` and eight
+hex digits, which no installation id looks like. They are legal v4 records and
+CI accepts them, but they are visible as drawn in the diff and they are counted
+separately in the run total. Use them to repair a gap you cannot re-drive, say
+so in the pull request, and prefer another lap where a lap is possible — the
+road only really gets better by being driven.
+
+Drawing never overwrites a surveyed metre; a drawn point landing on one is
+dropped — including the two records a **Connect** bridge is anchored to.
+
+**Connect** is the one to reach for first. It bridges a hole in a border from
+the two surveyed records either side of it, curving along their recorded
+headings rather than cutting a chord, and you can push the curve into shape
+before committing. It infers far less than tracing the gap freehand does,
+because both of its ends are real measurements.
+
+Run the editor from `gt7-tracks gui` and **Save into tracks/** merges your
+corrections straight in, on the same terms as `add_bundle.py` — there is no
+download-then-run-a-script step. Rebuild the index and the signatures
+afterwards, as for any other change.
 
 ## Reviewing
 
@@ -132,4 +169,6 @@ The [site](https://jbhoorasingh.github.io/gt7-datalogger-track-data/) draws any
 bundle in the repository. For a pull request, the quick checks are: does the
 outline look like the circuit, are the borders continuous, do the wall and
 run-off marks sit where walls and run-off actually are, and is the finish line
-on the finish line.
+on the finish line. If `meta.source_runs` gained a `drawn-…` entry, some of
+those metres were drawn rather than driven — worth a look at where, and worth
+asking whether a lap would have done instead.

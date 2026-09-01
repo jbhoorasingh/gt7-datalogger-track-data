@@ -12,6 +12,17 @@ class ToolValidationError(ValueError):
     """A tool invocation did not match its registered interface."""
 
 
+# The order groups appear in, which is also the order the work happens in:
+# get data, put it in order, publish it, and only then the checks that read
+# what the first three wrote.
+GROUPS: tuple[tuple[str, str], ...] = (
+    ("collect", "Get track data"),
+    ("build", "Rebuild what is derived"),
+    ("check", "Check before opening a pull request"),
+    ("app", "Send it back to your app"),
+)
+
+
 @dataclass(frozen=True)
 class ToolArgument:
     name: str
@@ -20,6 +31,10 @@ class ToolArgument:
     multiple: bool = False
     default: str | None = None
     emit_default_with_options: bool = False
+    # What a person calls this, as opposed to what argparse calls it. A form
+    # labelled "paths" is a form that assumes you already know the script.
+    label: str = ""
+    placeholder: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -28,6 +43,8 @@ class ToolArgument:
             "required": self.required,
             "multiple": self.multiple,
             "default": self.default,
+            "label": self.label or self.name,
+            "placeholder": self.placeholder or self.default or "",
         }
 
 
@@ -40,6 +57,7 @@ class ToolOption:
     metavar: str | None = None
     default: Any = None
     secret: bool = False
+    label: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -50,6 +68,7 @@ class ToolOption:
             "metavar": self.metavar,
             "default": self.default,
             "secret": self.secret,
+            "label": self.label or self.flag,
         }
 
 
@@ -64,16 +83,27 @@ class ToolSpec:
     mutates: bool = False
     long_running: bool = False
     gui_visible: bool = True
+    group: str = "build"
+    # The tools whose output is now stale because this one ran. Knowing that
+    # add-bundle is followed by build-index and build-signatures is the single
+    # thing every newcomer to this repository has to be told twice; it is a
+    # property of the tools, so the tools can say it.
+    next_steps: tuple[str, ...] = field(default_factory=tuple)
+    # One line telling you when to reach for this, in the second person.
+    when: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "title": self.title,
             "description": self.description,
+            "when": self.when,
+            "group": self.group,
             "arguments": [arg.as_dict() for arg in self.arguments],
             "options": [opt.as_dict() for opt in self.options],
             "mutates": self.mutates,
             "long_running": self.long_running,
+            "next_steps": list(self.next_steps),
         }
 
     def build_argv(
@@ -204,4 +234,18 @@ class ToolRegistry:
         return [tool for tool in tools if tool.gui_visible is gui_visible]
 
     def as_dicts(self, *, gui_visible: bool | None = None) -> list[dict[str, Any]]:
-        return [tool.as_dict() for tool in self.all(gui_visible=gui_visible)]
+        order = {key: index for index, (key, _) in enumerate(GROUPS)}
+        tools = sorted(
+            self.all(gui_visible=gui_visible),
+            key=lambda tool: (order.get(tool.group, len(order)), tool.title),
+        )
+        return [tool.as_dict() for tool in tools]
+
+    def groups(self, *, gui_visible: bool | None = None) -> list[dict[str, Any]]:
+        """The tools in the order the work is done, not in alphabetical order."""
+        present = {tool.group for tool in self.all(gui_visible=gui_visible)}
+        return [
+            {"id": key, "title": title}
+            for key, title in GROUPS
+            if key in present
+        ]
