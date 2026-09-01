@@ -7,6 +7,14 @@ Usage:
 
 The browser edits an in-memory copy and downloads corrected bundles.  This
 server deliberately implements no write endpoints.
+
+It does answer two read-only ones, `/api/app/tracks` and
+`/api/app/tracks/<slug>`, which fetch from a running datalogger on the page's
+behalf.  The page cannot do that itself: a browser will not read
+`http://gt7.local:8000` from a page served on loopback unless the app sends
+CORS headers for it, and asking every datalogger to open itself up to any
+local page so that this editor works would be the wrong trade.  Proxying keeps
+the relaxation here, on one process the user started, for two GET routes.
 """
 
 from __future__ import annotations
@@ -14,13 +22,21 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
+import json
+import os
 from pathlib import Path
 import socketserver
+import sys
+import urllib.parse
 import webbrowser
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from app_client import AppError, fetch_bundle, list_bundles, normalise_base  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
 EDITOR_PATH = "/tools/track_editor/track-editor.html"
+APP_PREFIX = "/api/app/tracks"
 
 
 class ReadOnlyHandler(http.server.SimpleHTTPRequestHandler):
@@ -37,6 +53,37 @@ class ReadOnlyHandler(http.server.SimpleHTTPRequestHandler):
     do_PUT = _read_only
     do_PATCH = _read_only
     do_DELETE = _read_only
+
+    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's spelling
+        path, _, query = self.path.partition("?")
+        if path == APP_PREFIX or path.startswith(f"{APP_PREFIX}/"):
+            self._proxy_app(path, query)
+            return
+        super().do_GET()
+
+    def _json(self, status: int, payload: object) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _proxy_app(self, path: str, query: str) -> None:
+        # The token is read from this process's environment rather than taken
+        # from the query string: a URL is logged, kept in history and shown in
+        # a referrer, and an admin token should be in none of those.
+        token = os.environ.get("GT7_ADMIN_TOKEN", "")
+        base = urllib.parse.parse_qs(query).get("base", [""])[0]
+        slug = path[len(APP_PREFIX):].lstrip("/")
+        try:
+            root = normalise_base(base)
+            if not slug:
+                self._json(200, {"base": root, "tracks": list_bundles(root, token)})
+            else:
+                self._json(200, fetch_bundle(root, urllib.parse.unquote(slug), token))
+        except AppError as exc:
+            self._json(502, {"detail": str(exc)})
 
     def log_message(self, format: str, *args: object) -> None:
         # Keep normal use quiet; parse errors and tracebacks still reach stderr.
