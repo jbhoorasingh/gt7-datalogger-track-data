@@ -4,9 +4,9 @@
  "bundle_format_version": 4,
  "counts": {
   "configurations": 121,
-  "surveyed": 9,
-  "points": 40456,
-  "corners_labelled": 38
+  "surveyed": 10,
+  "points": 47098,
+  "corners_labelled": 61
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -1247,7 +1247,20 @@
    "type": "real",
    "reverse": false,
    "slug": "mount-panorama-motor-racing-circuit",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/mount-panorama-motor-racing-circuit.json",
+    "track": "Mount Panorama Motor Racing Circuit",
+    "points": 6642,
+    "manual_points": 2535,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 23,
+    "sections": 0,
+    "updated_at": "2026-09-01T02:53:31.397488+00:00",
+    "bytes": 1042029
+   }
   },
   {
    "official_id": "6e659a",
