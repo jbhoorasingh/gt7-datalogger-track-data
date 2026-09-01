@@ -22,7 +22,8 @@ corrected corner label should not have to wait for a software release.
 | `catalog/tracks.json` | the official GT7 track/layout metadata the index is built from |
 | `vendor/` | third-party measurements the signatures lean on, and their licence |
 | `site/` | the inspection page published to GitHub Pages — surveyed circuits draw their borders, the rest draw the one recorded lap behind their signature |
-| `tools/` | add a bundle, rebuild the index and the signatures, validate everything |
+| `tools/` | add a bundle, rebuild the index and the signatures, validate everything — standard-library scripts, each runnable on its own |
+| `gt7_track_tools/` | those same tools as one `gt7-tracks` command and a local GUI, built from one shared description of each tool |
 
 The index lists **every** configuration, surveyed or not. A list of only what
 we have would say nothing about what is missing, and what is missing is most of
@@ -63,9 +64,81 @@ replaced.
 
 [latest]: https://github.com/jbhoorasingh/gt7-datalogger-track-data/releases/latest
 
+## The tools
+
+Every script in `tools/` is also a subcommand of one CLI, and most are also a
+form in a local GUI. That is not three implementations: the CLI, the GUI and
+the scripts all read one registry of tool descriptions
+(`gt7_track_tools/registry.py`), so a flag cannot exist in one place and be
+quietly missing from another, and a run started from a browser form builds the
+same argv you would have typed.
+
+```bash
+pip install -e .
+```
+
+That puts `gt7-tracks` on your path, along with the three dependencies the CLI
+and GUI need. The scripts under `tools/` are unaffected by this and stay
+standard-library only — if you would rather install nothing, everything below
+still works in its `python tools/…` form, and CI runs it that way.
+
+| command | what it does | script |
+|---|---|---|
+| `gt7-tracks add-bundle <file>…` | validate an exported bundle, name it after its configuration, merge it into `tracks/` | `add_bundle.py` |
+| `gt7-tracks build-index` | rebuild `index.json` from `catalog/` and `tracks/` | `build_index.py` |
+| `gt7-tracks build-signatures` | rebuild `signatures.json` from the surveys and the vendored captures | `build_signatures.py` |
+| `gt7-tracks validate` | check every bundle's format, name, official id and canonical form | `validate.py` |
+| `gt7-tracks vendor-captures` | refresh `vendor/circuits.json` from upstream gt-telemetry | `vendor_captures.py` |
+| `gt7-tracks import-into-app [BASE]` | POST every bundle here into a running datalogger | `import_into_app.py` |
+| `gt7-tracks check-app-agrees` | ask the app's own validator whether it still accepts every bundle unchanged | `check_app_agrees.py` |
+| `gt7-tracks track-editor` | open the local bundle editor | `track_editor.py` |
+| `gt7-tracks gui` | open the dashboard described below | — |
+
+The options, which are the same on the script:
+
+- `build-index`, `build-signatures`, `vendor-captures` take `--check` — compare
+  against what is committed and exit non-zero if it is stale, writing nothing.
+  This is what CI runs.
+- `validate` takes `--fix`, which rewrites bundles into canonical form.
+- `add-bundle` takes `--from-app [BASE]` instead of file paths, to pull straight
+  out of a running app.
+- `vendor-captures` takes `--ref REF` to vendor a specific upstream git ref.
+- `import-into-app` takes `--only SLUG` and `--token TOKEN`; `BASE` defaults to
+  `http://localhost:8000`.
+- `track-editor` and `gui` take `--port PORT` and `--no-browser`, which prints
+  the URL rather than opening one. `--port 0` picks a free port, which is
+  already what the editor does if you do not ask for one; the GUI defaults to
+  8766 so the tab you left open yesterday still points at it.
+
+### The GUI
+
+```bash
+gt7-tracks gui
+```
+
+Serves a dashboard on `http://127.0.0.1:8766/`, bound to loopback and nothing
+else, and opens a browser at it. Each tool is a form generated from that same
+registry — arguments, flags, defaults and all, with the admin token rendered as
+a password field — and every run is recorded with its exact argv, streaming
+stdout and stderr, exit code and duration while it runs. So the thing that goes
+wrong at three in the morning is a run you can read afterwards rather than
+scrollback you have already lost.
+
+The track editor is deliberately absent from that list of forms: it is a page
+in its own right rather than a command with output to stream, so the dashboard
+serves it rather than wrapping it.
+
 ## Contributing a track
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
+
+```bash
+gt7-tracks add-bundle ~/Downloads/deep-forest-raceway.json
+gt7-tracks build-index
+gt7-tracks build-signatures
+```
+
+...or, with nothing installed:
 
 ```bash
 python tools/add_bundle.py ~/Downloads/deep-forest-raceway.json
@@ -118,7 +191,7 @@ Run it by hand with `gh workflow run vendor.yml`, or check upstream without
 changing anything:
 
 ```bash
-python tools/vendor_captures.py --check
+gt7-tracks vendor-captures --check
 ```
 
 ## Repairing recorded points
@@ -126,12 +199,13 @@ python tools/vendor_captures.py --check
 To inspect and correct bad edge records without re-surveying the circuit, run:
 
 ```bash
-python tools/track_editor.py
+gt7-tracks track-editor
 ```
 
 The local editor can open any bundle in `tracks/` or import another v4 bundle.
 It supports visual selection, deletion and edge/wall/run-off relabelling, then
-downloads a corrected copy without overwriting the source file.
+downloads a corrected copy without overwriting the source file. It is also
+served from the GUI, so `gt7-tracks gui` gets you both from one process.
 
 ## What this data is not
 
