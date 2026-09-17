@@ -55,7 +55,7 @@ function edge(x, z, side = "L", kind = "edge", votes = null) {
 function bundle(edges = [edge(0, 0), edge(2, 0, "R", "wall")]) {
   return {
     format: "gt7-datalogger-track-bundle",
-    version: 4,
+    version: 5,
     meta: {
       track: "Test Course",
       runs: 1,
@@ -75,8 +75,8 @@ function bundle(edges = [edge(0, 0), edge(2, 0, "R", "wall")]) {
 test("parseBundle explains invalid JSON and unsupported versions", () => {
   assert.throws(() => parseBundle("{"), /Could not parse JSON/);
   const old = bundle();
-  old.version = 3;
-  assert.throws(() => validateBundle(old), /Only bundle format v4/);
+  old.version = 4;
+  assert.throws(() => validateBundle(old), /Only bundle format v5/);
 });
 
 test("validation rejects invalid votes and duplicate metre-side identities", () => {
@@ -86,6 +86,20 @@ test("validation rejects invalid votes and duplicate metre-side identities", () 
 
   const duplicate = bundle([edge(0.1, 0.1), edge(0.2, 0.2)]);
   assert.throws(() => validateBundle(duplicate), /repeats the metre/);
+});
+
+test("two road levels may share a plan cell, one level may not", () => {
+  const deck = edge(0.2, 0.2);
+  deck.y = 8.0;
+  const below = edge(0.1, 0.1);
+  below.y = 0.0;
+  assert.doesNotThrow(() => validateBundle(bundle([below, deck])));
+  const near = edge(0.1, 0.1);
+  near.y = 6.5;
+  assert.throws(() => validateBundle(bundle([near, deck])), /repeats the metre/);
+  const unknown = edge(0.1, 0.1);
+  unknown.y = null; // no elevation: matches any level
+  assert.throws(() => validateBundle(bundle([unknown, deck])), /repeats the metre/);
 });
 
 test("roundGrid matches Python half-even behavior", () => {

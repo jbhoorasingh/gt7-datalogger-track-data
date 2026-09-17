@@ -1,7 +1,7 @@
 """Assert the app still accepts every bundle this repository ships.
 
-`bundle_format.py` defines v4 here so that the tools run without installing
-the app. The app implements v4 as well, which means there are two
+`bundle_format.py` defines the format here so that the tools run without
+installing the app. The app implements it as well, which means there are two
 definitions of one format and they can drift apart — the exact failure the
 original "import the validator" plan existed to prevent.
 

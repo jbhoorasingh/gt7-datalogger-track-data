@@ -59,9 +59,11 @@ Then open a pull request.
 
 - The document is a well-formed bundle (`tools/validate.py`). The format is
   defined by `tools/bundle_format.py` — this repository's own
-  standard-library copy of v4, which the app (datalogger 0.5+) reads and
-  writes too; see that module's header for how the two relate.
-- It is format v4 and names a configuration that exists in the catalog.
+  standard-library copy of v5, which the app (datalogger 0.7+) reads and
+  writes too; see that module's header for how the two relate. A v4 export
+  (datalogger 0.5–0.6) is accepted and stamped v5 by `--fix`; anything
+  older has to go through a datalogger first.
+- It is format v5 and names a configuration that exists in the catalog.
 - The filename matches that configuration.
 - The file is in canonical form — `python tools/validate.py --fix` writes it.
 - `index.json` matches the bundles — `python tools/build_index.py` rebuilds it.
@@ -143,7 +145,7 @@ normally evidence that somebody drove past that metre, and a drawn one is
 somebody's opinion about where the road is.
 
 So drawn points are filed under a source id of their own, `drawn-` and eight
-hex digits, which no installation id looks like. They are legal v4 records and
+hex digits, which no installation id looks like. They are legal v5 records and
 CI accepts them, but they are visible as drawn in the diff and they are counted
 separately in the run total. Use them to repair a gap you cannot re-drive, say
 so in the pull request, and prefer another lap where a lap is possible — the
