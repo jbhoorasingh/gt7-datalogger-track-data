@@ -121,7 +121,7 @@ def build() -> dict:
     return {
         "format": "gt7-datalogger-track-index",
         "version": 1,
-        "bundle_format_version": 4,
+        "bundle_format_version": 5,
         "counts": {
             "configurations": len(rows),
             "surveyed": len(surveyed),

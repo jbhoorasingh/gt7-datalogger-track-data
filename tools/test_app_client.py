@@ -33,7 +33,7 @@ LISTING = [
     "not a row",
 ]
 
-BUNDLE = {"format": "gt7-datalogger-track-bundle", "version": 4, "edges": []}
+BUNDLE = {"format": "gt7-datalogger-track-bundle", "version": 5, "edges": []}
 
 
 class StubApp(http.server.BaseHTTPRequestHandler):

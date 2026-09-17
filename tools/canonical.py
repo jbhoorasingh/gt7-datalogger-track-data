@@ -68,7 +68,10 @@ def dumps(doc: dict[str, Any]) -> str:
         # Sorted by POSITION, not by when it was first driven. Insertion order
         # is an accident of one person's laps; position is a property of the
         # circuit, so everybody's file agrees on where a metre belongs.
-        key=lambda e: (e["side"], round(e["x"], 3), round(e["z"], 3)),
+        # Two levels of one cell (a bridge over the road beneath it, v5)
+        # sort lowest first, a record with no elevation before either.
+        key=lambda e: (e["side"], round(e["x"], 3), round(e["z"], 3),
+                       e.get("y") is not None, e.get("y") or 0.0),
     )
     meta = doc["meta"]
     parts = [

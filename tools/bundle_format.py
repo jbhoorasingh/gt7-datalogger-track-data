@@ -1,8 +1,8 @@
-"""The track bundle format, version 4 — this repository's own copy.
+"""The track bundle format, version 5 — this repository's own copy.
 
-The app defines v4 too: since datalogger 0.5 its `app/processing/track_bundle.py`
-reads and writes the same documents, and its import endpoint accepts every
-version from 1 up, upgrading in place. (Earlier revisions of this header
+The app defines v5 too: since datalogger 0.5 its `app/processing/track_bundle.py`
+reads and writes the same documents (v4 then, v5 since 0.7), and its import
+endpoint accepts every version from 1 up, upgrading in place. (Earlier revisions of this header
 predate that — the format landed here first, and the app adopted it.) The
 definition is still duplicated here on purpose: this repository's whole
 toolchain is standard-library Python, and making "open a pull request"
@@ -26,6 +26,14 @@ v4 exists because v3 cannot describe what a shared repository needs:
   * **`corners` and `sections`** — authored rather than surveyed, so they are
     kept through a merge instead of being recomputed from evidence.
 
+v5 (datalogger 0.7, #96) changes what a record IS without changing what one
+looks like: one record per metre per side **per road level**. Where a circuit
+crosses over itself — Suzuka's bridge and the road beneath it — two records
+share a plan cell, told apart by an elevation difference over LEVEL_SEP_M;
+a record without elevation matches any level. A v4 file is a valid v5 file
+exactly as it stands (its merge only ever kept one record per cell), so v4
+is accepted here and stamped v5 on the way in.
+
 Two implementations of one format is exactly the drift risk the "defer to
 the app's validator" idea existed to prevent. It is guarded rather than
 avoided: CI installs the app and asserts it still accepts every bundle this
@@ -43,9 +51,16 @@ import math
 from typing import Any
 
 BUNDLE_FORMAT = "gt7-datalogger-track-bundle"
-BUNDLE_VERSION = 4
+BUNDLE_VERSION = 5
 
-GRID_M = 1.0  # dedup cell: one record per metre per side
+GRID_M = 1.0  # dedup cell: one record per metre per side, per road level
+# Two records in one plan cell are the same metre unless their elevations
+# differ by more than this — then the road passes over itself there and each
+# is one level's border. The app's figure (track_bundle.LEVEL_SEP_M), chosen
+# from the collected bundles: same-side records within 2 m of each other
+# differ by at most 0.72 m, raw marks in one cell by 0.18 m, and a road a car
+# can drive under is at least a car's height plus a deck above the other.
+LEVEL_SEP_M = 3.0
 MAX_POINTS = 50_000
 MAX_FINISH_CROSSINGS = 20
 
@@ -70,8 +85,16 @@ MAX_REPORTED = 6
 
 
 def edge_key(e: dict[str, Any]) -> tuple[int, int, str]:
-    """One record per metre per side — kind is voted on, not part of identity."""
+    """The plan cell a record occupies: one metre of one side. Kind is voted
+    on, not part of identity; elevation splits a cell into road levels."""
     return (round(e["x"] / GRID_M), round(e["z"] / GRID_M), e["side"])
+
+
+def same_level(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Whether two records at one plan position are on the same road. A
+    record with no elevation (mapped before v3) matches anything."""
+    ya, yb = a.get("y"), b.get("y")
+    return ya is None or yb is None or abs(ya - yb) <= LEVEL_SEP_M
 
 
 def tally(source_votes: dict[str, list[int]]) -> int:
@@ -99,20 +122,26 @@ def merge_edges(
     the earlier rather than adding to it — which is what makes contributing
     the same export twice a no-op instead of a doubling.
 
+    Identity is a plan cell AND a road level (v5): evidence for a level the
+    cell has not seen becomes a second record beside the first rather than a
+    vote on it, so the road under a bridge keeps its own border.
+
     Records in `existing` are mutated; records copied out of `new` are never
     aliased.
     """
     merged = list(existing)
-    index = {edge_key(e): e for e in existing}
+    index: dict[tuple[int, int, str], list[dict[str, Any]]] = {}
+    for e in existing:
+        index.setdefault(edge_key(e), []).append(e)
     for e in new:
-        key = edge_key(e)
-        cur = index.get(key)
+        cell = index.setdefault(edge_key(e), [])
+        cur = next((c for c in cell if same_level(c, e)), None)
         if cur is None:
             if len(merged) >= MAX_POINTS:
                 continue
             copy = {**e, "votes": {kind: {src: list(v) for src, v in sources.items()}
                                    for kind, sources in e["votes"].items()}}
-            index[key] = copy
+            cell.append(copy)
             merged.append(copy)
             continue
         # Elevation backfill: a metre first mapped before v3 has no `y`, and
@@ -299,21 +328,24 @@ def _check_edges(
     if len(edges) > MAX_POINTS:
         _fail(problems, f"{len(edges):,} edge records — the format holds at most "
                         f"{MAX_POINTS:,}")
-    seen: dict[tuple[int, int, str], int] = {}
+    seen: dict[tuple[int, int, str], list[tuple[int, dict[str, Any]]]] = {}
     for i, e in enumerate(edges):
         before = len(problems)
         _check_edge(e, f"edges[{i}]", sources, problems)
         if len(problems) != before:
             continue  # its geometry is already in question; don't key on it
         key = edge_key(e)
-        first = seen.get(key)
+        held = seen.setdefault(key, [])
+        # Two records for one metre of one side ON ONE LEVEL is the
+        # contradiction the voting grid exists to prevent; a consumer would
+        # draw both. On different levels they are a bridge and the road
+        # beneath it, which is what v5 exists to keep (#96).
+        first = next((j for j, other in held if same_level(other, e)), None)
         if first is not None:
-            # Two records for one metre of one side is the contradiction the
-            # voting grid exists to prevent; a consumer would draw both.
             _fail(problems, f"edges[{i}] repeats the metre already held by "
                             f"edges[{first}] ({key[0]}, {key[1]}, {key[2]})")
         else:
-            seen[key] = i
+            held.append((i, e))
 
 
 def _check_finish(crossings: Any, problems: list[str]) -> None:
@@ -401,7 +433,7 @@ def validate_document(doc: Any) -> dict[str, Any]:
         raise ValueError(f"is format v{version}; this repository stores "
                          f"v{BUNDLE_VERSION} and will not guess at fields it "
                          "does not know")
-    if version < BUNDLE_VERSION:
+    if version < 4:
         # No upgrade path here on purpose. v1-v3 count votes per run with no
         # source id, and inventing the id those counts belong to is a merge
         # decision, not a format one. The app makes it on import (it attributes
@@ -428,4 +460,8 @@ def validate_document(doc: Any) -> dict[str, Any]:
         if len(problems) > MAX_REPORTED:
             shown.append("... and more")
         raise ValueError("; ".join(shown))
+    # v4 -> v5 moved the stamp and nothing else: a v4 document's records are
+    # v5 records as they stand, so accepting one costs no upgrade logic and
+    # refusing one would turn away every export from a datalogger before 0.7.
+    doc["version"] = BUNDLE_VERSION
     return doc

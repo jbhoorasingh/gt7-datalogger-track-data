@@ -1,5 +1,5 @@
 const FORMAT = "gt7-datalogger-track-bundle";
-const VERSION = 4;
+const VERSION = 5;
 export const KINDS = ["wall", "runoff", "edge", "auto", "straddle"];
 export const MANUAL_KINDS = ["wall", "runoff", "edge"];
 const AUTO_KINDS = ["auto", "straddle"];
@@ -9,6 +9,16 @@ export const SIDES = ["L", "R"];
 // a document the repository would then reject.
 export const GRID_M = 1.0;
 export const MAX_POINTS = 50000;
+// Two records in one plan cell are the same metre unless their elevations
+// differ by more than this: then the road passes over itself and each is one
+// level's border (v5). Same figure as bundle_format.LEVEL_SEP_M.
+export const LEVEL_SEP_M = 3.0;
+
+export function sameLevel(a, b) {
+  const ya = a.y ?? null;
+  const yb = b.y ?? null;
+  return ya === null || yb === null || Math.abs(ya - yb) <= LEVEL_SEP_M;
+}
 
 const clone = (value) => {
   if (typeof structuredClone === "function") return structuredClone(value);
@@ -122,8 +132,13 @@ function validateEdges(edges, sourceRuns) {
     if (Math.abs(Math.hypot(edge.hx, edge.hz) - 1) > 0.001) fail(`${where} heading must be a unit vector`);
     validateVotes(edge, index, sourceRuns);
     const key = `${roundGrid(edge.x)},${roundGrid(edge.z)},${edge.side}`;
-    if (seen.has(key)) fail(`${where} repeats the metre already held by edges[${seen.get(key)}] (${key})`);
-    seen.set(key, index);
+    // One record per metre per side PER ROAD LEVEL: a second record in the
+    // cell is fine when it is the bridge over this one (or the road under it).
+    const held = seen.get(key) ?? [];
+    const twin = held.find((other) => sameLevel(other.edge, edge));
+    if (twin) fail(`${where} repeats the metre already held by edges[${twin.index}] (${key})`);
+    held.push({ index, edge });
+    seen.set(key, held);
   });
 }
 

@@ -17,7 +17,7 @@ corrected corner label should not have to wait for a software release.
 | path | what |
 |---|---|
 | `index.json` | **all 121 GT7 configurations**, with their official name, country, turn count and length — and, where one exists, the bundle we have |
-| `tracks/<slug>.json` | one surveyed circuit, in the app's [track bundle format](https://jbhoorasingh.github.io/gt7-datalogger/reference/track-bundle-format/) (v4) |
+| `tracks/<slug>.json` | one surveyed circuit, in the app's [track bundle format](https://jbhoorasingh.github.io/gt7-datalogger/reference/track-bundle-format/) (v5) |
 | `signatures.json` | enough geometry — length, bounding box and the racing line in driving order — for the app to name a circuit from one lap, before anybody has named it by hand |
 | `catalog/tracks.json` | the official GT7 track/layout metadata the index is built from |
 | `vendor/` | third-party measurements the signatures lean on, and their licence |
@@ -225,7 +225,7 @@ gt7-tracks track-editor
 
 The local editor opens a bundle three ways: any circuit in `tracks/`, a
 **running datalogger** — type its address, connect, and pick from what it has
-surveyed — or a v4 bundle file from anywhere. It is also served from the GUI,
+surveyed — or a v5 bundle file from anywhere. It is also served from the GUI,
 so `gt7-tracks gui` gets you both from one process.
 
 The layout is two thin strips and then nothing but canvas. Everything that used
