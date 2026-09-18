@@ -112,6 +112,72 @@ def default_registry() -> ToolRegistry:
     )
     registry.register(
         ToolSpec(
+            id="sync-job",
+            title="Merge from the sync service",
+            description="Pull the pending uploads from the sync service, merge them, judge the gate "
+                        "and open one pull request per changed circuit.",
+            when="Normally never by hand: .github/workflows/sync.yml runs this nightly. "
+                 "Run it yourself to look before the job does, with --dry-run.",
+            group="collect",
+            runner=_tool_main_runner("sync_job"),
+            options=(
+                ToolOption(
+                    name="official_id",
+                    flag="--official-id",
+                    kind="value",
+                    label="Just one configuration",
+                    help="An official id; blank means every circuit with pending uploads.",
+                    metavar="ID",
+                ),
+                ToolOption(
+                    name="service",
+                    flag="--service",
+                    kind="value",
+                    label="Service address",
+                    help="The sync service's base URL.",
+                    metavar="URL",
+                ),
+                ToolOption(
+                    name="dry_run",
+                    flag="--dry-run",
+                    kind="flag",
+                    label="Only look",
+                    help="Fetch, merge and judge; write and report nothing.",
+                    default=False,
+                ),
+                ToolOption(
+                    name="no_git",
+                    flag="--no-git",
+                    kind="flag",
+                    label="Write the bundles, open nothing",
+                    help="Merge into tracks/ without a branch or a pull request.",
+                    default=False,
+                ),
+                ToolOption(
+                    name="no_report",
+                    flag="--no-report",
+                    kind="flag",
+                    label="Tell the service nothing",
+                    help="Do not report statuses, issues or the run back.",
+                    default=False,
+                ),
+                ToolOption(
+                    name="publish_existing",
+                    flag="--publish-existing",
+                    kind="flag",
+                    label="Publish the surveys already here",
+                    help="Compile and publish every bundle in tracks/; read no queue.",
+                    default=False,
+                ),
+            ),
+            mutates=True,
+            long_running=True,
+            gui_visible=False,
+            next_steps=("build-index", "build-signatures", "validate"),
+        )
+    )
+    registry.register(
+        ToolSpec(
             id="build-index",
             title="Rebuild index.json",
             description="Generate or check index.json from catalog/ and tracks/.",

@@ -1,0 +1,678 @@
+"""Tests for the merge job.
+
+Three layers, tested three ways. The corroboration policy and the gate are
+arithmetic and are tested as arithmetic, case for case against the sync
+service's reference implementation (`src/domain/policy.ts` there), because a
+quorum off by one is a wall somebody drew alone published as fact. Layout
+identification is tested against every survey this repository actually holds:
+each must be recognised as the configuration its contributor confirmed, and
+each must be told from its reverse twin. And the whole run is exercised
+against a temporary copy of the repository with a bare git remote, a fake
+service that records what it was told, and a fake forge — so the branch, the
+commit, the pull request, the statuses and the publication are all asserted
+on rather than trusted.
+
+The end-to-end tests need the datalogger's compiler. They skip without it;
+`.github/workflows/sync.yml` installs it and runs them before every run. To
+run them from a checkout of the datalogger instead:
+
+    GT7_DATALOGGER_BACKEND=/path/to/gt7-datalogger/backend python tools/test_sync_job.py
+
+One more layer runs only when pointed at a live service — a local
+`wrangler dev` of the sync service, seeded — and checks that every request
+the job makes is one the real handlers accept:
+
+    GT7_SYNC_TEST_URL=http://localhost:8787 GT7_SYNC_SERVICE_KEY=… python tools/test_sync_job.py
+"""
+
+from __future__ import annotations
+
+import copy
+import io
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+
+backend = os.environ.get("GT7_DATALOGGER_BACKEND")
+if backend:
+    sys.path.insert(0, backend)
+try:
+    from app.processing import track_compile  # noqa: F401
+
+    HAVE_COMPILER = True
+except ImportError:
+    HAVE_COMPILER = False
+
+import sync_job  # noqa: E402
+from sync_job import (  # noqa: E402
+    Context,
+    Git,
+    Repository,
+    ServiceError,
+    corroborate,
+    crossing_spread,
+    evaluate_gate,
+    identify_layout,
+    kind_changes,
+    new_metres,
+    policy_kinds,
+    publishable_copy,
+    run,
+)
+
+# ── fixtures ────────────────────────────────────────────────────────────────
+
+ALICE, BOB, CAROL = "usr_alice", "usr_bob", "usr_carol"
+ACCOUNTS = {"aaaa11": ALICE, "aaaa22": ALICE, "bbbb11": BOB, "cccc11": CAROL}
+
+SURVEY = ROOT / "tracks" / "deep-forest-raceway.json"
+DEEP_FOREST = "0457d4"
+DEEP_FOREST_REVERSE = "f3e708"
+
+
+def load_survey(path: Path = SURVEY) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def gate_side(pct: float = 100.0, closed: bool = True, gaps: int = 0) -> dict[str, Any]:
+    return {"pct": pct, "closed": closed, "gaps": gaps}
+
+
+def gate_input(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "published": False,
+        "crossings": [{"x": 0, "z": 0}, {"x": 1, "z": 0}, {"x": 2, "z": 0}],
+        "contributor_official_id": "ring-gp",
+        "signature_official_id": "ring-gp",
+        "coverage": {"left": gate_side(), "right": gate_side()},
+    }
+    base.update(overrides)
+    return base
+
+
+SETTINGS = {"min_finish_crossings": 3, "crossing_spread_m": 5, "require_full_coverage": True}
+
+
+def edge(x: float, z: float, side: str, votes: dict[str, dict[str, list[int]]]) -> dict[str, Any]:
+    return {"x": x, "z": z, "y": None, "hx": 1.0, "hz": 0.0, "side": side,
+            "kind": sync_job.resolve_kind(votes), "votes": votes, "run": 1, "tw": None}
+
+
+def document(edges: list[dict[str, Any]], sources: dict[str, int]) -> dict[str, Any]:
+    return {
+        "format": "gt7-datalogger-track-bundle", "version": 5,
+        "meta": {"track": "Ring GP", "runs": sum(sources.values()), "source_runs": sources,
+                 "updated_at": "2026-09-01T00:00:00+00:00",
+                 "official": {"track": "Ring", "layout": "GP", "official_id": "ring-gp",
+                              "official_name": "Ring GP", "turns": 3, "length_m": 1000.0, "reverse": False}},
+        "edges": edges, "finish_crossings": [], "corners": [], "sections": [],
+    }
+
+
+# ── the corroboration policy ────────────────────────────────────────────────
+
+
+class CorroborationTests(unittest.TestCase):
+    def test_inferred_tier_decides_from_a_single_account(self) -> None:
+        result = corroborate({"auto": {"aaaa11": [4, 7]}}, ACCOUNTS, 2)
+        self.assertEqual((result["kind"], result["tier"], result["pending"]), ("auto", "inferred", []))
+
+    def test_manual_kind_below_quorum_is_held_as_pending_evidence(self) -> None:
+        result = corroborate({"wall": {"aaaa11": [3, 7]}, "straddle": {"bbbb11": [2, 4]}}, ACCOUNTS, 2)
+        self.assertEqual(result["kind"], "straddle")
+        self.assertEqual(result["pending"], ["wall"])
+        self.assertEqual(result["corroborated"], [])
+        self.assertEqual(result["evidence"][0]["contributors"], 1)
+
+    def test_manual_kind_decides_once_a_second_account_votes_it(self) -> None:
+        result = corroborate({"wall": {"aaaa11": [3, 7], "bbbb11": [1, 2]}, "straddle": {"cccc11": [9, 9]}},
+                             ACCOUNTS, 2)
+        self.assertEqual((result["kind"], result["tier"]), ("wall", "manual"))
+        self.assertEqual(result["evidence"][0]["accounts"], [ALICE, BOB])
+
+    def test_counts_accounts_not_installations(self) -> None:
+        result = corroborate({"wall": {"aaaa11": [3, 7], "aaaa22": [2, 5]}, "auto": {"bbbb11": [1, 1]}}, ACCOUNTS, 2)
+        self.assertEqual(result["kind"], "auto")
+        self.assertFalse(result["evidence"][0]["quorum"])
+
+    def test_satisfied_at_exactly_the_quorum(self) -> None:
+        three = {"runoff": {"aaaa11": [1, 1], "bbbb11": [1, 1], "cccc11": [1, 1]}, "auto": {"aaaa11": [5, 5]}}
+        self.assertEqual(corroborate(three, ACCOUNTS, 3)["kind"], "runoff")
+        self.assertEqual(corroborate(three, ACCOUNTS, 4)["kind"], "auto")
+
+    def test_every_drawn_source_is_one_contributor_and_never_a_quorum_alone(self) -> None:
+        result = corroborate({"edge": {"drawn-one": [1, 1], "drawn-two": [1, 1], "aaaa11": [1, 1]},
+                              "auto": {"bbbb11": [3, 3]}}, ACCOUNTS, 3)
+        self.assertEqual(result["evidence"][0]["contributors"], 2)
+        alone = corroborate({"edge": {"drawn-one": [1, 1], "drawn-two": [1, 1]}, "auto": {"bbbb11": [3, 3]}},
+                            ACCOUNTS, 1)
+        self.assertEqual(alone["kind"], "auto")
+
+    def test_a_source_bound_to_no_account_is_evidence_not_a_voice(self) -> None:
+        result = corroborate({"wall": {"aaaa11": [1, 1], "zzzz99": [1, 1]}, "auto": {"bbbb11": [1, 1]}},
+                             ACCOUNTS, 2)
+        self.assertEqual(result["kind"], "auto")
+        self.assertEqual(result["evidence"][0]["unmapped"], ["zzzz99"])
+
+
+class PolicyOnDocumentsTests(unittest.TestCase):
+    def test_policy_kinds_reports_pending_conflicts_and_decisions(self) -> None:
+        doc = document([
+            edge(0, 0, "L", {"wall": {"aaaa11": [1, 1]}, "auto": {"bbbb11": [1, 1]}}),
+            edge(1, 0, "L", {"wall": {"aaaa11": [1, 1], "bbbb11": [1, 1]},
+                             "runoff": {"cccc11": [1, 1], "aaaa22": [1, 1]}}),
+            edge(2, 0, "L", {"edge": {"aaaa11": [1, 1]}}),
+        ], {"aaaa11": 1, "aaaa22": 1, "bbbb11": 1, "cccc11": 1})
+        report = policy_kinds(doc, ACCOUNTS, 2, {(2, 0, "L"): "runoff"})
+        self.assertEqual(report["kinds"][(0, 0, "L")], "auto")
+        self.assertEqual(report["pending"], [(0, 0, "L"), (2, 0, "L")])
+        self.assertEqual([c["kinds"] for c in report["conflicts"]], [["wall", "runoff"]])
+        self.assertEqual(report["decided"], [(2, 0, "L")])
+        self.assertEqual(report["kinds"][(2, 0, "L")], "runoff")
+
+    def test_publishable_copy_never_touches_the_stored_document(self) -> None:
+        doc = document([edge(0, 0, "L", {"wall": {"aaaa11": [1, 1]}, "auto": {"bbbb11": [1, 1]}})],
+                       {"aaaa11": 1, "bbbb11": 1})
+        kinds = policy_kinds(doc, ACCOUNTS, 2)["kinds"]
+        drawn = publishable_copy(doc, kinds)
+        self.assertEqual(drawn["edges"][0]["kind"], "auto")
+        self.assertEqual(doc["edges"][0]["kind"], "wall")
+
+    def test_kind_changes_are_corroborated_only_when_the_policy_agrees(self) -> None:
+        before = document([edge(0, 0, "L", {"auto": {"bbbb11": [1, 1]}}),
+                           edge(1, 0, "L", {"auto": {"bbbb11": [1, 1]}})], {"bbbb11": 1})
+        after = document([edge(0, 0, "L", {"auto": {"bbbb11": [1, 1]}, "wall": {"aaaa11": [1, 1]}}),
+                          edge(1, 0, "L", {"auto": {"bbbb11": [1, 1]}, "wall": {"aaaa11": [1, 1], "cccc11": [1, 1]}}),
+                          edge(2, 0, "L", {"auto": {"aaaa11": [1, 1]}})],
+                         {"aaaa11": 1, "bbbb11": 1, "cccc11": 1})
+        changes = kind_changes(before, after, ACCOUNTS, 2)
+        by_x = {c["x"]: c for c in changes}
+        self.assertEqual(set(by_x), {0, 1})
+        self.assertFalse(by_x[0]["corroborated"])
+        self.assertTrue(by_x[1]["corroborated"])
+        self.assertEqual(new_metres(before, after), 1)
+        self.assertEqual(kind_changes(None, after, ACCOUNTS, 2), [])
+
+
+# ── the gate ────────────────────────────────────────────────────────────────
+
+
+class GateTests(unittest.TestCase):
+    def test_spread_is_a_diameter(self) -> None:
+        self.assertEqual(crossing_spread([]), 0.0)
+        self.assertEqual(crossing_spread([{"x": 0, "z": 0}, {"x": 4, "z": 0}, {"x": 8, "z": 0}]), 8.0)
+        self.assertIsNone(crossing_spread([{"x": 0, "z": 0}, {"x": "no", "z": 0}]))
+
+    def test_first_publication_passes_when_everything_holds(self) -> None:
+        result = evaluate_gate(gate_input(), SETTINGS)
+        self.assertTrue(result["pass"])
+        self.assertEqual(result["mode"], "first_publication")
+        self.assertEqual([c["id"] for c in result["criteria"]],
+                         ["finish_crossings", "crossing_spread", "layout_agreement", "perimeter_complete"])
+
+    def test_each_first_publication_criterion_fails_on_its_own(self) -> None:
+        self.assertEqual(evaluate_gate(gate_input(crossings=[{"x": 0, "z": 0}]), SETTINGS)["failed"], ["finish_crossings"])
+        wide = [{"x": 0, "z": 0}, {"x": 3, "z": 0}, {"x": 6, "z": 0}]
+        self.assertEqual(evaluate_gate(gate_input(crossings=wide), SETTINGS)["failed"], ["crossing_spread"])
+        self.assertEqual(evaluate_gate(gate_input(signature_official_id="ring-gp-reverse"), SETTINGS)["failed"],
+                         ["layout_agreement"])
+        gappy = gate_input(coverage={"left": gate_side(96.6, False, 2), "right": gate_side()})
+        result = evaluate_gate(gappy, SETTINGS)
+        self.assertEqual(result["failed"], ["perimeter_complete"])
+        self.assertIn("96.6%, open, 2 gaps", result["criteria"][3]["value"])
+        self.assertTrue(evaluate_gate(gappy, {**SETTINGS, "require_full_coverage": False})["pass"])
+
+    def test_a_layout_a_person_accepted_passes_with_their_name_on_it(self) -> None:
+        result = evaluate_gate(gate_input(signature_official_id="other", layout_accepted_at="2026-09-18T00:00:00Z"), SETTINGS)
+        self.assertTrue(result["pass"])
+        self.assertIn("accepted by the administrator", result["criteria"][2]["value"])
+
+    def test_an_update_must_hold_coverage_and_corroborate_kind_changes(self) -> None:
+        held = gate_input(published=True, previous_coverage={"left": gate_side(90), "right": gate_side(80)},
+                          coverage={"left": gate_side(95), "right": gate_side(80)}, kind_changes=[])
+        result = evaluate_gate(held, SETTINGS)
+        self.assertTrue(result["pass"])
+        self.assertEqual(result["mode"], "update")
+        self.assertEqual([c["id"] for c in result["criteria"]][-2:], ["coverage_held", "kind_changes"])
+
+        lost = evaluate_gate({**held, "coverage": {"left": gate_side(89), "right": gate_side(80)}}, SETTINGS)
+        self.assertEqual(lost["failed"], ["coverage_held"])
+        unknown = evaluate_gate({**held, "previous_coverage": None}, SETTINGS)
+        self.assertEqual(unknown["failed"], ["coverage_held"])
+
+        changed = evaluate_gate({**held, "kind_changes": [
+            {"side": "L", "x": 12.34, "z": -5.0, "from": "auto", "to": "wall", "corroborated": False},
+            {"side": "R", "x": 1.0, "z": 1.0, "from": "auto", "to": "straddle", "corroborated": True},
+        ]}, SETTINGS)
+        self.assertEqual(changed["failed"], ["kind_changes"])
+        self.assertIn("1 of 2 not corroborated (first at (12.3, -5.0) side L: auto → wall)",
+                      changed["criteria"][-1]["value"])
+
+
+# ── which layout a survey is of ─────────────────────────────────────────────
+
+
+class IdentificationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.signatures = Repository(ROOT).signatures()
+
+    def test_every_survey_in_the_repository_is_recognised_as_its_confirmed_layout(self) -> None:
+        for path in sorted((ROOT / "tracks").glob("*.json")):
+            doc = load_survey(path)
+            claimed = doc["meta"]["official"]["official_id"]
+            with self.subTest(path.name):
+                layout = identify_layout(doc, None, self.signatures)
+                self.assertIs(layout["agrees"], True, layout)
+                self.assertEqual(layout["signature_official_id"], claimed)
+
+    def test_a_survey_claimed_as_its_reverse_twin_is_caught(self) -> None:
+        doc = load_survey()
+        doc["meta"]["official"]["official_id"] = DEEP_FOREST_REVERSE
+        layout = identify_layout(doc, None, self.signatures)
+        self.assertIs(layout["agrees"], False)
+        self.assertEqual(layout["signature_official_id"], DEEP_FOREST)
+        self.assertGreater(layout["heading_agree"], layout["heading_disagree"])
+        self.assertTrue(layout["signature_line"])
+
+    def test_a_venue_no_signature_describes_is_neither_agreed_nor_disputed(self) -> None:
+        doc = load_survey()
+        for e in doc["edges"]:
+            e["x"] += 50_000
+        layout = identify_layout(doc, None, self.signatures)
+        self.assertIsNone(layout["agrees"])
+        self.assertEqual(layout["signature_official_id"], "")
+
+
+# ── the whole run, against a fake service and a real git ────────────────────
+
+
+class FakeService:
+    """The sync service as the job sees it, remembering everything it was told."""
+
+    def __init__(self, uploads: list[dict[str, Any]], bundles: dict[str, dict[str, Any]],
+                 policy: dict[str, Any] | None = None, sources: dict[str, str] | None = None) -> None:
+        self.uploads = uploads
+        self.bundles = bundles
+        # 20 m rather than the spec's 5 m default: the real survey these tests
+        # merge crosses its finish line at five lateral positions 12.8 m
+        # apart, which the Euclidean spread the reference gate measures
+        # counts against it. The threshold is the administrator's to set;
+        # the tests are about the job, not about the default.
+        self._policy = policy or {"policy": {"manual_quorum": 2},
+                                  "gate": {"min_finish_crossings": 3, "crossing_spread_m": 20,
+                                           "require_full_coverage": True, "auto_merge": False}}
+        self._sources = sources or {}
+        self.statuses: list[tuple[str, str, str, str]] = []
+        self.issues: list[dict[str, Any]] = []
+        self.merge_requests: list[dict[str, Any]] = []
+        self.compiled: dict[str, dict[str, Any]] = {}
+        self.published: list[tuple[str, dict[str, Any]]] = []
+        self.runs: list[dict[str, Any]] = []
+        self.kind: list[dict[str, Any]] = []
+        self.layout: list[dict[str, Any]] = []
+
+    def policy(self) -> dict[str, Any]:
+        return self._policy
+
+    def pending_uploads(self, official_id: str = "") -> list[dict[str, Any]]:
+        return [u for u in self.uploads if not official_id or u["official_id"] == official_id]
+
+    def fetch_bundle(self, upload: dict[str, Any]) -> dict[str, Any]:
+        if upload["id"] not in self.bundles:
+            raise ServiceError(404, "not_found", "the stored document for that upload is gone")
+        return copy.deepcopy(self.bundles[upload["id"]])
+
+    def sources(self) -> dict[str, str]:
+        return dict(self._sources)
+
+    def kind_decisions(self, official_id: str) -> list[dict[str, Any]]:
+        return [d for d in self.kind if d["official_id"] == official_id]
+
+    def layout_decisions(self, official_id: str) -> list[dict[str, Any]]:
+        return [d for d in self.layout if d["official_id"] == official_id]
+
+    def open_run(self) -> str:
+        self.runs.append({"id": "job_test", "open": True})
+        return "job_test"
+
+    def close_run(self, run_id: str, ok: bool, counters: dict[str, int], detail: dict[str, Any]) -> None:
+        self.runs.append({"id": run_id, "ok": ok, **counters, "detail": detail})
+
+    def report_status(self, upload_id: str, status: str, reason: str = "", pr_url: str = "") -> None:
+        self.statuses.append((upload_id, status, reason, pr_url))
+
+    def report_merge_request(self, **fields: Any) -> dict[str, Any]:
+        self.merge_requests.append(fields)
+        return {"merge_request": fields}
+
+    def raise_issue(self, **fields: Any) -> dict[str, Any]:
+        self.issues.append(fields)
+        return {"issue_id": f"iss_{len(self.issues)}", "outcome": "raised"}
+
+    def put_compiled(self, official_id: str, compiled: dict[str, Any]) -> dict[str, Any]:
+        self.compiled[official_id] = compiled
+        return {"official_id": official_id, "r2_key": f"published/{official_id}.json"}
+
+    def publish(self, official_id: str, facts: dict[str, Any]) -> dict[str, Any]:
+        self.published.append((official_id, facts))
+        return {"track": facts}
+
+
+class FakeForge:
+    def __init__(self, merges: bool = True) -> None:
+        self.merges = merges
+        self.upserts: list[tuple[str, str, str, bool]] = []
+        self.merged: list[str] = []
+        self.workflows: list[str] = []
+        self.already_merged: dict[str, str] = {}
+
+    def open_pr_url(self, branch: str) -> str:
+        return ""
+
+    def merged_pr_url(self, branch: str) -> str:
+        return self.already_merged.get(branch, "")
+
+    def upsert(self, branch: str, title: str, body: str, draft: bool) -> str:
+        self.upserts.append((branch, title, body, draft))
+        return f"https://github.com/example/track-data/pull/{len(self.upserts)}"
+
+    def merge(self, branch: str, attempts: int = 5, wait: Any = None) -> bool:
+        if self.merges:
+            self.merged.append(branch)
+        return self.merges
+
+    def workflow_run(self, workflow: str) -> None:
+        self.workflows.append(workflow)
+
+
+def upload_row(upload_id: str, official_id: str, source_id: str, user_id: str) -> dict[str, Any]:
+    return {"id": upload_id, "user_id": user_id, "source_id": source_id, "official_id": official_id,
+            "track_name": "Deep Forest Raceway", "version": 4, "edges": 100, "runs": 1, "crossings": 4,
+            "bytes": 1000, "digest": "abc", "received_at": "2026-09-17T20:00:00Z"}
+
+
+def survey_subset(doc: dict[str, Any], source: str, every: int = 2) -> dict[str, Any]:
+    """A fresh survey of the same road: every n-th record, attributed to one new installation."""
+    out = copy.deepcopy(doc)
+    out["version"] = 4
+    edges = []
+    for i, e in enumerate(doc["edges"]):
+        if i % every:
+            continue
+        kept = copy.deepcopy(e)
+        kept["votes"] = {kept["kind"]: {source: [1, 1]}}
+        kept["run"] = 1
+        edges.append(kept)
+    out["edges"] = edges
+    out["meta"]["source_runs"] = {source: 1}
+    out["meta"]["runs"] = 1
+    return out
+
+
+@unittest.skipUnless(HAVE_COMPILER, "needs the datalogger's compiler (app.processing.track_compile)")
+class EndToEndTests(unittest.TestCase):
+    """A temporary copy of this repository with a bare origin, one survey in it."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="sync-job-"))
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        for name in ("catalog", "vendor"):
+            shutil.copytree(ROOT / name, self.repo / name)
+        (self.repo / "tools").mkdir()
+        for script in ROOT.glob("tools/*.py"):
+            shutil.copy(script, self.repo / "tools" / script.name)
+        (self.repo / "tracks").mkdir()
+        shutil.copy(SURVEY, self.repo / "tracks" / SURVEY.name)
+        for derived in ("build_index.py", "build_signatures.py"):
+            subprocess.run([sys.executable, str(self.repo / "tools" / derived)], cwd=self.repo,
+                           check=True, capture_output=True)
+        git = lambda *a: subprocess.run(["git", *a], cwd=self.repo, check=True, capture_output=True, text=True)  # noqa: E731
+        git("init", "-q", "-b", "main")
+        git("config", "user.email", "test@example.invalid")
+        git("config", "user.name", "test")
+        git("add", "-A")
+        git("commit", "-q", "-m", "seed")
+        self.origin = self.tmp / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.origin)], check=True)
+        git("remote", "add", "origin", str(self.origin))
+        git("push", "-q", "origin", "main")
+        self.existing = load_survey(self.repo / "tracks" / SURVEY.name)
+        self.log = io.StringIO()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def context(self, service: FakeService, forge: FakeForge | None = None, **overrides: Any) -> Context:
+        repo = Repository(self.repo)
+        fields: dict[str, Any] = dict(
+            service=service, repo=repo, git=Git(self.repo), forge=forge or FakeForge(),
+            policy=service.policy(), accounts=service.sources(),
+            configs={c["official_id"]: c for c in repo.catalog_configurations()},
+            signatures=repo.signatures(), log=lambda line: self.log.write(line + "\n"))
+        fields.update(overrides)
+        return Context(**fields)
+
+    def origin_has(self, branch: str, path: str) -> str:
+        return subprocess.run(["git", "show", f"{branch}:{path}"], cwd=self.origin,
+                              capture_output=True, text=True).stdout
+
+    def test_a_new_survey_of_a_published_circuit_opens_a_pull_request(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        forge = FakeForge()
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        outcome = outcomes[0]
+        self.assertEqual(outcome.action, "pull_request", self.log.getvalue())
+        self.assertTrue(outcome.gate["pass"], outcome.gate)
+        self.assertEqual(outcome.gate["mode"], "update")
+        branch, title, body, draft = forge.upserts[0]
+        self.assertEqual(branch, "sync/deep-forest-raceway")
+        self.assertFalse(draft)
+        self.assertIn("| Coverage held | pass |", body)
+        self.assertIn("`upl_1`", body)
+        # The branch on origin carries the merged bundle, canonical, with the new installation's votes.
+        pushed = self.origin_has(branch, "tracks/deep-forest-raceway.json")
+        self.assertIn('"feedbeef"', pushed)
+        # The derived files follow the bundle on the same branch: one more installation.
+        index = json.loads(self.origin_has(branch, "index.json"))
+        row = next(c for c in index["configurations"] if c["official_id"] == DEEP_FOREST)
+        self.assertEqual(row["bundle"]["sources"], len(self.existing["meta"]["source_runs"]) + 1)
+        # Auto-merge is off: the pull request waits, the upload stays pending, and nothing is published.
+        self.assertEqual(service.merge_requests[0]["status"], "awaiting_review")
+        self.assertEqual(service.statuses, [])
+        self.assertEqual(service.published, [])
+        self.assertEqual(service.issues, [])
+        self.assertEqual(service.runs[-1]["prs_opened"], 1)
+        self.assertEqual(service.runs[-1]["awaiting_review"], 1)
+
+    def test_with_auto_merge_on_the_gate_merges_reports_and_publishes(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        service._policy["gate"]["auto_merge"] = True
+        forge = FakeForge(merges=True)
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "merged")
+        self.assertEqual(forge.merged, ["sync/deep-forest-raceway"])
+        self.assertEqual(forge.workflows, ["pack.yml", "pages.yml"])
+        self.assertEqual(service.merge_requests[0]["status"], "auto_merged")
+        self.assertEqual([s[:2] for s in service.statuses], [("upl_1", "merged")])
+        self.assertTrue(service.statuses[0][3].startswith("https://github.com/"))
+        self.assertIn(DEEP_FOREST, service.compiled)
+        self.assertEqual(service.compiled[DEEP_FOREST]["format"], "gt7-datalogger-track-compiled")
+        official_id, facts = service.published[0]
+        self.assertEqual(official_id, DEEP_FOREST)
+        self.assertEqual(facts["latest_r2_key"], f"published/{DEEP_FOREST}.json")
+        self.assertEqual(facts["track_name"], "Deep Forest Raceway")
+        self.assertEqual(facts["contributors"], 3)  # two unbound sources in the survey, plus Bob
+        self.assertEqual(service.runs[-1]["auto_merged"], 1)
+
+    def test_an_upload_already_on_main_is_reported_merged_and_published(self) -> None:
+        already = copy.deepcopy(self.existing)
+        already["version"] = 4
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "20597c92fb01", ALICE)], {"upl_1": already})
+        forge = FakeForge()
+        forge.already_merged["sync/deep-forest-raceway"] = "https://github.com/example/track-data/pull/7"
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "merged")
+        self.assertEqual(service.statuses, [("upl_1", "merged", "already published in the track data",
+                                             "https://github.com/example/track-data/pull/7")])
+        self.assertEqual(forge.upserts, [])
+        self.assertEqual(len(service.published), 1)
+        self.assertEqual(service.published[0][1]["pr_url"], "https://github.com/example/track-data/pull/7")
+
+    def test_a_survey_under_the_wrong_layout_is_held_with_both_lines(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        upload["meta"]["official"]["official_id"] = DEEP_FOREST_REVERSE
+        upload["meta"]["official"]["official_name"] = "Deep Forest Raceway (Reverse)"
+        service = FakeService([upload_row("upl_1", DEEP_FOREST_REVERSE, "feedbeef", BOB)], {"upl_1": upload})
+        forge = FakeForge()
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "held")
+        self.assertEqual(forge.upserts, [])
+        self.assertEqual([s[:2] for s in service.statuses], [("upl_1", "held")])
+        issue = service.issues[0]
+        self.assertEqual(issue["type"], "layout_mismatch")
+        self.assertEqual(issue["detail"]["contributor_official_id"], DEEP_FOREST_REVERSE)
+        self.assertEqual(issue["detail"]["signature_official_id"], DEEP_FOREST)
+        self.assertGreater(len(issue["detail"]["contributor_line"]), 10)
+        self.assertGreater(len(issue["detail"]["signature_line"]), 10)
+        self.assertEqual(issue["upload_id"], "upl_1")
+
+    def test_once_a_person_accepted_the_layout_the_survey_goes_through(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        upload["meta"]["official"]["official_id"] = DEEP_FOREST_REVERSE
+        service = FakeService([upload_row("upl_1", DEEP_FOREST_REVERSE, "feedbeef", BOB)], {"upl_1": upload})
+        service.layout.append({"issue_id": "iss_1", "official_id": DEEP_FOREST_REVERSE, "upload_id": "upl_1",
+                               "decided_at": "2026-09-18T00:00:00Z", "decided_by": "usr_admin"})
+        forge = FakeForge()
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "pull_request", self.log.getvalue())
+        layout = next(c for c in outcomes[0].gate["criteria"] if c["id"] == "layout_agreement")
+        self.assertTrue(layout["pass"])
+        self.assertIn("accepted by the administrator", layout["value"])
+        # A first publication of the reverse layout: the perimeter rule applies.
+        self.assertEqual(outcomes[0].gate["mode"], "first_publication")
+
+    def test_a_document_the_repository_refuses_is_rejected_with_its_words(self) -> None:
+        bad = survey_subset(self.existing, "feedbeef")
+        bad["edges"][0]["hx"] = 5.0
+        missing = upload_row("upl_2", DEEP_FOREST, "feedbeef", BOB)
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB), missing], {"upl_1": bad})
+        ok, outcomes = run(self.context(service, FakeForge()))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "rejected")
+        statuses = {s[0]: s for s in service.statuses}
+        self.assertEqual(statuses["upl_1"][1], "rejected")
+        self.assertIn("unit vector", statuses["upl_1"][2])
+        self.assertEqual(statuses["upl_2"][1], "rejected")
+        self.assertIn("gone", statuses["upl_2"][2])
+
+    def test_publishing_what_is_already_here_draws_the_existing_surveys(self) -> None:
+        service = FakeService([], {})
+        ctx = self.context(service, git=None, forge=None)
+        self.assertEqual(sync_job.publish_existing(ctx), 1)
+        self.assertEqual(list(service.compiled), [DEEP_FOREST])
+        self.assertTrue(service.compiled[DEEP_FOREST]["borders"]["L"])
+        official_id, facts = service.published[0]
+        self.assertEqual(official_id, DEEP_FOREST)
+        self.assertEqual(facts["latest_r2_key"], f"published/{DEEP_FOREST}.json")
+        self.assertGreater(facts["coverage"]["left"], 90)
+        self.assertEqual(facts["pr_url"], "")
+        self.assertEqual(service.statuses, [])
+
+        looked = FakeService([], {})
+        self.assertEqual(sync_job.publish_existing(self.context(looked, git=None, forge=None, dry_run=True)), 0)
+        self.assertEqual(looked.published, [])
+
+    def test_a_dry_run_writes_and_reports_nothing(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        ctx = self.context(service, git=None, forge=None, dry_run=True)
+        ok, outcomes = run(ctx)
+        self.assertTrue(ok)
+        self.assertEqual(outcomes[0].action, "pull_request")
+        self.assertTrue(outcomes[0].gate["pass"])
+        self.assertEqual((service.statuses, service.merge_requests, service.runs, service.issues), ([], [], [], []))
+        self.assertEqual(subprocess.run(["git", "status", "--porcelain"], cwd=self.repo,
+                                        capture_output=True, text=True).stdout, "")
+
+
+# ── the wire, against a live service ────────────────────────────────────────
+
+
+@unittest.skipUnless(os.environ.get("GT7_SYNC_TEST_URL") and os.environ.get("GT7_SYNC_SERVICE_KEY"),
+                     "set GT7_SYNC_TEST_URL and GT7_SYNC_SERVICE_KEY to check the wire against a live service")
+class ContractTests(unittest.TestCase):
+    """Every request the job makes, made for real, against a service you point it at.
+
+    Meant for a local `wrangler dev` of the sync service. It writes rows there
+    — a job run, a merge request, a publication of a circuit called
+    `sync-test` — so do not point it at the hosted one.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.service = sync_job.Service(os.environ["GT7_SYNC_TEST_URL"], os.environ["GT7_SYNC_SERVICE_KEY"])
+
+    def test_the_read_side_answers_in_the_shapes_the_job_reads(self) -> None:
+        policy = self.service.policy()
+        self.assertIn("manual_quorum", policy["policy"])
+        self.assertIn("auto_merge", policy["gate"])
+        self.assertIsInstance(self.service.sources(), dict)
+        self.assertIsInstance(self.service.pending_uploads(), list)
+        self.assertIsInstance(self.service.kind_decisions("sync-test"), list)
+        self.assertIsInstance(self.service.layout_decisions("sync-test"), list)
+
+    def test_the_write_side_accepts_what_the_job_sends(self) -> None:
+        run_id = self.service.open_run()
+        compiled = {"format": "gt7-datalogger-track-compiled", "version": 1,
+                    "borders": {"L": [[[0, 0, None], [1, 0, None]]], "R": [[[0, 2, None], [1, 2, None]]]},
+                    "finish": [0, 0, 0, 2], "centerline": [[[0, 1, None, 2], [1, 1, None, 2]]], "road": [],
+                    "coverage": {"L": {"surveyed_m": 1, "gap_m": 0, "pct": 100, "closed": True},
+                                 "R": {"surveyed_m": 1, "gap_m": 0, "pct": 100, "closed": True}, "road_pct": 100}}
+        stored = self.service.put_compiled("sync-test", compiled)
+        self.assertEqual(stored["r2_key"], "published/sync-test.json")
+        gate = evaluate_gate(gate_input(), SETTINGS)
+        reply = self.service.report_merge_request(official_id="sync-test", pr_url="https://example.invalid/pull/1",
+                                                  branch="sync/sync-test", accounts=1, new_metres=2,
+                                                  kind_changes=0, gate=gate, status="awaiting_review")
+        self.assertIn("merge_request", reply)
+        published = self.service.publish("sync-test", {"track_name": "Sync Test", "slug": "sync-test",
+                                                       "length_m": 2, "coverage": {"left": 100, "right": 100},
+                                                       "closed": True, "contributors": 1, "runs": 1,
+                                                       "latest_r2_key": stored["r2_key"],
+                                                       "merge_status": "auto_merged"})
+        self.assertEqual(published["track"]["official_id"], "sync-test")
+        issue = self.service.raise_issue(type="gate_failed", official_id="sync-test",
+                                         summary="contract test", detail={"failed": ["finish_crossings"]},
+                                         trigger={"failed": ["finish_crossings"]})
+        self.assertIn(issue["outcome"], ("raised", "already_open", "suppressed"))
+        self.service.close_run(run_id, True, {"tracks_touched": 1, "prs_opened": 1, "auto_merged": 0,
+                                              "awaiting_review": 1, "issues_raised": 1}, {"scope": "sync-test"})
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)

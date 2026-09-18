@@ -1,0 +1,77 @@
+# Merge what the sync service collected, as pull requests nobody has to open.
+#
+# The sync service (sync.gt7-datalogger.com) accepts survey bundles from
+# dataloggers and stores them; it never merges anything. This is the other
+# half: nightly, and whenever the service's admin panel asks (its "Run job
+# now" sends a workflow_dispatch here), tools/sync_job.py pulls the pending
+# uploads, merges each circuit's into the bundle this repository holds,
+# compiles the geometry with the datalogger's own compiler, judges the
+# auto-merge gate, opens one pull request per changed circuit, merges it
+# itself when the gate and the checks both pass and the administrator has
+# switched auto-merge on, and tells the service what became of every upload.
+#
+# What needs a person stops here as an issue in the service's admin panel —
+# a survey filed under a layout the geometry disagrees with, an update that
+# would shrink the published perimeter, a pull request the gate declined —
+# and comes back through the queue once they answer. The routine night is
+# silent; the one carrying a question is the one that reaches you.
+#
+# Secrets: GT7_SYNC_SERVICE_KEY is the service key (rotate it from the
+# service's Admin → Settings). GITHUB_TOKEN opens and merges the pull
+# requests. A merge made with GITHUB_TOKEN starts no workflow, so the job asks
+# pack.yml and pages.yml to republish by name afterwards.
+name: sync
+
+on:
+  schedule:
+    # 02:00 UTC, an hour before the service's own housekeeping sweep and
+    # long after the evening's driving in every timezone that drives.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      official_id:
+        description: "One configuration's official id, or blank for every circuit with pending uploads"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The compiler is the datalogger's, not this repository's, and the
+      # job refuses to run without it rather than publish geometry it made
+      # up. Same install as validate.yml's app-agrees job.
+      - name: Install the datalogger, for its compiler
+        run: |
+          pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
+
+      - name: Test the job against this checkout
+        run: python tools/test_sync_job.py
+
+      - name: Merge, judge, and open pull requests
+        env:
+          GT7_SYNC_SERVICE_KEY: ${{ secrets.GT7_SYNC_SERVICE_KEY }}
+          GT7_SYNC_URL: ${{ vars.GT7_SYNC_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python tools/sync_job.py --official-id "${{ inputs.official_id }}"

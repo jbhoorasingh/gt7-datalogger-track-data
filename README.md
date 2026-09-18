@@ -92,6 +92,7 @@ still works in its `python tools/…` form, and CI runs it that way.
 | `gt7-tracks vendor-captures` | refresh `vendor/circuits.json` from upstream gt-telemetry | `vendor_captures.py` |
 | `gt7-tracks import-into-app [BASE]` | POST every bundle here into a running datalogger | `import_into_app.py` |
 | `gt7-tracks check-app-agrees` | ask the app's own validator whether it still accepts every bundle unchanged | `check_app_agrees.py` |
+| `gt7-tracks sync-job` | merge the sync service's pending uploads and open one pull request per circuit — what `sync.yml` runs nightly | `sync_job.py` |
 | `gt7-tracks track-editor` | open the local bundle editor | `track_editor.py` |
 | `gt7-tracks gui` | open the dashboard described below | — |
 
@@ -109,6 +110,14 @@ The options, which are the same on the script:
   running app without listing them first. `pull-from-app` is the same job with
   a look before the leap.
 - `vendor-captures` takes `--ref REF` to vendor a specific upstream git ref.
+- `sync-job` takes `--official-id ID` for one configuration, `--service URL`
+  for a service other than the hosted one, `--dry-run` to fetch, merge and
+  judge without writing or reporting anything, `--no-git` to merge into
+  `tracks/` and open nothing, `--no-report` to tell the service nothing, and
+  `--publish-existing` to compile and publish every survey already in
+  `tracks/` without reading the queue — the catch-up for a service deployed
+  after the surveys were merged by hand. It reads the service key from
+  `GT7_SYNC_SERVICE_KEY`.
 - `import-into-app` takes `--only SLUG` and `--token TOKEN`; `BASE` defaults to
   `http://localhost:8000`.
 - `track-editor` and `gui` take `--port PORT` and `--no-browser`, which prints
@@ -179,7 +188,7 @@ seen it twice between them.
 
 ## How this stays current
 
-Data arrives here two ways.
+Data arrives here three ways.
 
 **People surveying.** A pull request, reviewed, merged — the section above.
 This is the only way a bundle is ever created, and it is the only way the road
@@ -214,6 +223,67 @@ changing anything:
 ```bash
 gt7-tracks vendor-captures --check
 ```
+
+### Surveys from the sync service
+
+The third way is the [sync service](https://sync.gt7-datalogger.com): a
+datalogger with sync switched on uploads its survey bundles there, and
+`.github/workflows/sync.yml` runs `tools/sync_job.py` nightly (02:00 UTC) and
+whenever the service's admin panel asks. The job pulls every pending upload,
+merges each circuit's into the bundle here with the same rules `add_bundle.py`
+applies, compiles the geometry with the datalogger's own compiler, judges the
+auto-merge gate, and opens **one pull request per changed circuit** on a
+`sync/<slug>` branch — updating the pull request already open for that branch
+rather than opening a second. When the gate and the checks both pass and the
+administrator has switched auto-merge on in the service's settings, the job
+merges it itself and asks the pack and the site to republish, exactly as the
+vendor refresh does. Otherwise the pull request waits for a person, and the
+service's admin panel shows why, criterion by criterion.
+
+Two things it never turns into a pull request, because a pull request would
+be the wrong answer: a survey whose confirmed layout disagrees with what
+`signatures.json` identifies from the geometry (it would file a circuit under
+the wrong name), and an update that would shrink the published perimeter. Both
+are *held* and raise an issue in the service's admin panel; the administrator's
+answer comes back through the queue on the next run. A document the
+repository's validator refuses is *rejected*, with the validator's own words
+for the contributor.
+
+The job is stateless: every run rebuilds a circuit's branch from `main` and
+every upload still pending for it, and an upload is reported `merged` only
+once `main` already holds everything it contributes — the run after its pull
+request lands, whether the gate merged it or you did. Nothing remembers which
+upload went into which pull request; the repository is the record.
+
+Where the corroboration policy bites is worth knowing before reading a pull
+request from it. A manual kind (`wall`, `runoff`, `edge`) is one person's
+judgement, and the service's `MANUAL_QUORUM` says how many distinct accounts
+must agree before it decides a metre. The bundle format resolves `kind` from
+votes by its own rule, and both validators insist the stored `kind` matches,
+so the file in `tracks/` keeps the format's kinds and every vote as evidence.
+The policy is applied to what is derived from it: the compiled geometry the
+service publishes (a lone voter's wall is not drawn as one on the map), and
+the gate, which will not auto-merge a pull request whose stored kinds changed
+without quorum. A metre where two manual kinds both reach quorum is a
+`quorum_conflict` for the administrator to settle.
+
+It needs two secrets on this repository: `GT7_SYNC_SERVICE_KEY` (the service
+key, rotated from the service's Admin → Settings) and the workflow's own
+`GITHUB_TOKEN`. Run it yourself to look before the job does — nothing is
+written or reported:
+
+```bash
+GT7_SYNC_SERVICE_KEY=… gt7-tracks sync-job --dry-run
+```
+
+`python tools/test_sync_job.py` exercises the policy, the gate, layout
+identification against every survey here, and a whole run against a
+temporary copy of the repository; the end-to-end part needs the datalogger's
+compiler, which the workflow installs and which
+`GT7_DATALOGGER_BACKEND=/path/to/gt7-datalogger/backend` supplies from a
+checkout. The service side of this conversation — the queue, the callbacks,
+the policy endpoint — is documented in the sync service's own repository under
+`docs/merge-job.md`.
 
 ## Repairing recorded points
 
