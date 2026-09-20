@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 14,
-  "points": 75022,
+  "surveyed": 15,
+  "points": 77585,
   "corners_labelled": 101
  },
  "unmatched_bundles": [],
@@ -548,7 +548,20 @@
    "type": "original",
    "reverse": true,
    "slug": "bb-raceway-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/bb-raceway-reverse.json",
+    "track": "BB Raceway (Reverse)",
+    "points": 2563,
+    "manual_points": 2553,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-16T17:28:08.459498+00:00",
+    "bytes": 385788
+   }
   },
   {
    "official_id": "e86599",
