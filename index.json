@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 16,
-  "points": 83699,
-  "corners_labelled": 101
+  "surveyed": 17,
+  "points": 91025,
+  "corners_labelled": 120
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -742,7 +742,20 @@
    "type": "real",
    "reverse": false,
    "slug": "circuit-de-spa-francorchamps",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/circuit-de-spa-francorchamps.json",
+    "track": "Circuit de Spa-Francorchamps",
+    "points": 7326,
+    "manual_points": 6684,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 19,
+    "sections": 1,
+    "updated_at": "2026-09-15T22:22:00.984402+00:00",
+    "bytes": 1136261
+   }
   },
   {
    "official_id": "d60ebc",
