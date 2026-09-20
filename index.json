@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 18,
-  "points": 98052,
+  "surveyed": 19,
+  "points": 99512,
   "corners_labelled": 120
  },
  "unmatched_bundles": [],
@@ -1365,7 +1365,20 @@
    "type": "original",
    "reverse": false,
    "slug": "northern-isle-speedway",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/northern-isle-speedway.json",
+    "track": "Northern Isle Speedway",
+    "points": 1460,
+    "manual_points": 1460,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 5,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-15T22:22:02.820371+00:00",
+    "bytes": 219188
+   }
   },
   {
    "official_id": "fd4818",
