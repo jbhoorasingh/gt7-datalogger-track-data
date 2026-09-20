@@ -61,6 +61,25 @@ def pull_from_app(
     _run("pull-from-app", arguments=[base] if base else [], options=options)
 
 
+@app.command("sync-job")
+def sync_job(
+    official_id: Optional[str] = typer.Option(None, "--official-id", help="One configuration; blank for every circuit with pending uploads."),
+    service: Optional[str] = typer.Option(None, "--service", help="The sync service's base URL."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Fetch, merge and judge; write and report nothing."),
+    no_git: bool = typer.Option(False, "--no-git", help="Write tracks/ but open no branch or pull request."),
+    no_report: bool = typer.Option(False, "--no-report", help="Do not tell the service what happened."),
+    publish_existing: bool = typer.Option(False, "--publish-existing", help="Compile and publish every survey already in tracks/; read no queue."),
+) -> None:
+    """Merge the sync service's pending uploads and open pull requests. Nightly in CI."""
+    options: dict[str, object] = {"dry_run": dry_run, "no_git": no_git, "no_report": no_report,
+                                  "publish_existing": publish_existing}
+    if official_id is not None:
+        options["official_id"] = official_id
+    if service is not None:
+        options["service"] = service
+    _run("sync-job", options=options)
+
+
 @app.command("build-index")
 def build_index(
     check: bool = typer.Option(False, "--check", help="Check index.json without writing."),
