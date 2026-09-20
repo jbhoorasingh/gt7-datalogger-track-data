@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 10,
-  "points": 47098,
-  "corners_labelled": 61
+  "surveyed": 11,
+  "points": 49508,
+  "corners_labelled": 73
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -1706,7 +1706,20 @@
    "type": "real",
    "reverse": false,
    "slug": "tsukuba-circuit",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/tsukuba-circuit.json",
+    "track": "Tsukuba Circuit",
+    "points": 2410,
+    "manual_points": 1991,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 12,
+    "sections": 0,
+    "updated_at": "2026-09-16T16:43:02.574025+00:00",
+    "bytes": 375008
+   }
   },
   {
    "official_id": "60d74b",
