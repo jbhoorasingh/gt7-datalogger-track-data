@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 17,
-  "points": 91025,
+  "surveyed": 18,
+  "points": 98052,
   "corners_labelled": 120
  },
  "unmatched_bundles": [],
@@ -1031,7 +1031,20 @@
    "type": "real",
    "reverse": false,
    "slug": "fuji-international-speedway",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/fuji-international-speedway.json",
+    "track": "Fuji International Speedway",
+    "points": 7027,
+    "manual_points": 1314,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-15T22:22:02.407507+00:00",
+    "bytes": 1125122
+   }
   },
   {
    "official_id": "b1c9f8",
