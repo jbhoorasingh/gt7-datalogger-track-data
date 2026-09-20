@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 19,
-  "points": 99512,
+  "surveyed": 20,
+  "points": 104168,
   "corners_labelled": 120
  },
  "unmatched_bundles": [],
@@ -1142,7 +1142,20 @@
    "type": "original",
    "reverse": false,
    "slug": "high-speed-ring",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/high-speed-ring.json",
+    "track": "High Speed Ring",
+    "points": 4656,
+    "manual_points": 4069,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 5,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-16T18:19:00.294705+00:00",
+    "bytes": 716497
+   }
   },
   {
    "official_id": "ede05f",
