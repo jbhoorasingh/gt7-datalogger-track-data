@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 15,
-  "points": 77585,
+  "surveyed": 16,
+  "points": 83699,
   "corners_labelled": 101
  },
  "unmatched_bundles": [],
@@ -367,7 +367,20 @@
    "type": "real",
    "reverse": false,
    "slug": "autopolis-international-racing-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/autopolis-international-racing-course.json",
+    "track": "Autopolis International Racing Course",
+    "points": 6114,
+    "manual_points": 5897,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-20T16:26:05.898450+00:00",
+    "bytes": 937929
+   }
   },
   {
    "official_id": "2c2c67",
