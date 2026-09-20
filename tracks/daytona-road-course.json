@@ -5,7 +5,7 @@
   "track": "Daytona Road Course",
   "runs": 1,
   "source_runs": {"ad6b1b8b75c9":1},
-  "updated_at": "2026-08-20T02:33:25.371038+00:00",
+  "updated_at": "2026-09-15T22:22:01.245000+00:00",
   "official": {"track":"Daytona International Speedway","layout":"Road Course","official_id":"c58e28","official_name":"Daytona Road Course","turns":12,"length_m":5729.0,"reverse":false}
  },
  "edges": [
