@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 21,
-  "points": 113563,
+  "surveyed": 22,
+  "points": 118874,
   "corners_labelled": 139
  },
  "unmatched_bundles": [],
@@ -1808,7 +1808,20 @@
    "type": "original",
    "reverse": false,
    "slug": "trial-mountain-circuit",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/trial-mountain-circuit.json",
+    "track": "Trial Mountain Circuit",
+    "points": 5311,
+    "manual_points": 5136,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-15T22:22:03.551860+00:00",
+    "bytes": 807240
+   }
   },
   {
    "official_id": "26514b",
