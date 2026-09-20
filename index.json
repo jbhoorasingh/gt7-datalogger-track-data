@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 11,
-  "points": 49508,
-  "corners_labelled": 73
+  "surveyed": 12,
+  "points": 62313,
+  "corners_labelled": 90
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -119,7 +119,20 @@
    "type": "original",
    "reverse": false,
    "slug": "autodrome-lago-maggiore-full-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/autodrome-lago-maggiore-full-course.json",
+    "track": "Autodrome Lago Maggiore (Full Course)",
+    "points": 12805,
+    "manual_points": 6147,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 17,
+    "sections": 0,
+    "updated_at": "2026-09-20T15:36:58.926124+00:00",
+    "bytes": 2043905
+   }
   },
   {
    "official_id": "71b4d8",
