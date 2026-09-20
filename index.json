@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 20,
-  "points": 104168,
-  "corners_labelled": 120
+  "surveyed": 21,
+  "points": 113563,
+  "corners_labelled": 139
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -1683,7 +1683,20 @@
    "type": "real",
    "reverse": false,
    "slug": "suzuka-circuit",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/suzuka-circuit.json",
+    "track": "Suzuka Circuit",
+    "points": 9395,
+    "manual_points": 7983,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 5,
+    "corners": 19,
+    "sections": 4,
+    "updated_at": "2026-09-16T16:01:33.175842+00:00",
+    "bytes": 1497290
+   }
   },
   {
    "official_id": "4414cb",
