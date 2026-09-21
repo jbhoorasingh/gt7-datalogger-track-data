@@ -30,9 +30,17 @@ Two things can be said:
     borders are smoothed, over the service-wide `compile.smooth_borders`
     switch. `null` follows the switch.
 
-What is drawn *in* — a bridge across a gap, a border nobody drove — is not a
-correction. It is evidence of its own kind, filed under a `drawn-` source in
-the bundle like any other, because it only ever adds.
+  * **`draw`** — border records somebody DREW: a bridge across a gap, a kerb
+    nobody drove. The same shape as a bundle's records, every vote under a
+    `drawn-` source, and compiled with the evidence as though they were in
+    it. They are here and not in the bundle because the bundle is what the
+    datalogger imports, and its validator takes a source id to be hex — a
+    bundle carrying `drawn-524eff6e` is refused whole. The first two edits
+    ever merged put drawn records in their bundles; `main` went red on "the
+    app still accepts what we ship" and the pack shipped two circuits no app
+    would load. A drawn border is an opinion about the evidence, and this is
+    the file for opinions. A surveyed record in the same metre wins: a drawn
+    record never replaces a driven one.
 
 Standard library only, like everything else in this repository's toolchain.
 """
@@ -58,6 +66,11 @@ MIN_POLYGON_POINTS = 3
 MAX_POLYGON_POINTS = 200
 MAX_REASON = 280
 MAX_NAME = 80
+MAX_DRAWN = 15_000
+GRID_M = 1.0  # bundle_format's, and the editor's: one record a metre a side
+LEVEL_SEP_M = 3.0  # bundle_format's: further apart in height is another road
+MANUAL_KINDS = ("wall", "runoff", "edge")  # what somebody can say lies beyond a border
+DRAWN_KEYS = ("x", "z", "y", "hx", "hz", "side", "kind", "votes", "run", "tw")
 # A circuit is a few kilometres across. A coordinate out here is a typo or a
 # unit mistake, and an area that size would hide a whole survey.
 MAX_COORDINATE_M = 50_000.0
@@ -75,6 +88,7 @@ def empty(official_id: str, track: str) -> dict[str, Any]:
         "track": track,
         "compile": {"smooth_borders": None},
         "exclude": [],
+        "draw": [],
     }
 
 
@@ -82,7 +96,8 @@ def is_empty(doc: dict[str, Any] | None) -> bool:
     """Whether the document says anything at all. One that does not need not exist."""
     if not doc:
         return True
-    return not doc.get("exclude") and (doc.get("compile") or {}).get("smooth_borders") is None
+    return (not doc.get("exclude") and not doc.get("draw")
+            and (doc.get("compile") or {}).get("smooth_borders") is None)
 
 
 def _fail(message: str) -> None:
@@ -105,6 +120,46 @@ def _text(value: Any, where: str, limit: int, *, required: bool = False) -> str:
     if any(ord(ch) < 32 for ch in value):
         _fail(f"{where} must not contain control characters")
     return value
+
+
+def _drawn(raw: Any, index: int) -> dict[str, Any]:
+    where = f"draw[{index}]"
+    if not isinstance(raw, dict):
+        _fail(f"{where} must be an object")
+    unknown = sorted(set(raw) - set(DRAWN_KEYS))
+    if unknown:
+        _fail(f"{where} has unknown key(s): {', '.join(unknown)}")
+    for key in ("x", "z", "hx", "hz"):
+        if not _finite(raw.get(key)):
+            _fail(f"{where}.{key} must be a number")
+    if abs(raw["x"]) > MAX_COORDINATE_M or abs(raw["z"]) > MAX_COORDINATE_M:
+        _fail(f"{where} is not on any circuit")
+    for key in ("y", "tw"):
+        if raw.get(key) is not None and not _finite(raw[key]):
+            _fail(f"{where}.{key} must be a number or null")
+    if raw.get("side") not in SIDES:
+        _fail(f"{where}.side must be L or R")
+    kind = raw.get("kind")
+    if kind not in MANUAL_KINDS:
+        _fail(f"{where}.kind must be one of {', '.join(MANUAL_KINDS)}: nobody can infer a metre nobody drove")
+    run = raw.get("run")
+    if not isinstance(run, int) or isinstance(run, bool) or run < 1:
+        _fail(f"{where}.run must be a whole number of at least 1")
+    votes = raw.get("votes")
+    if not isinstance(votes, dict) or set(votes) != {kind}:
+        _fail(f"{where}.votes must vote for its own kind and no other")
+    by_source = votes[kind]
+    if not isinstance(by_source, dict) or not by_source:
+        _fail(f"{where}.votes names nobody")
+    for source, entry in by_source.items():
+        # The whole reason this list exists. A record under anybody's
+        # installation id is a lap, and laps are not written here.
+        if not isinstance(source, str) or not source.startswith(DRAWN_SOURCE_PREFIX):
+            _fail(f"{where} is filed under {source!r}: only a {DRAWN_SOURCE_PREFIX} source may be drawn")
+        if (not isinstance(entry, list) or len(entry) != 2
+                or not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in entry)):
+            _fail(f"{where}.votes[{kind!r}][{source!r}] must be [count, run]")
+    return {key: raw.get(key) for key in DRAWN_KEYS}
 
 
 def _area(raw: Any, index: int) -> dict[str, Any]:
@@ -168,7 +223,7 @@ def validate(raw: Any) -> dict[str, Any]:
         _fail(f"format must be {FORMAT}")
     if raw.get("version") != VERSION:
         _fail(f"version must be {VERSION}")
-    unknown = sorted(set(raw) - set(HEADER_KEYS) - {"exclude"})
+    unknown = sorted(set(raw) - set(HEADER_KEYS) - {"exclude", "draw"})
     if unknown:
         _fail(f"unknown key(s): {', '.join(unknown)}")
 
@@ -192,6 +247,14 @@ def validate(raw: Any) -> dict[str, Any]:
     if len(set(ids)) != len(ids):
         _fail("every exclude area needs an id of its own")
 
+    drawn_raw = raw.get("draw", [])
+    if not isinstance(drawn_raw, list) or len(drawn_raw) > MAX_DRAWN:
+        _fail(f"draw must be a list of at most {MAX_DRAWN} records")
+    drawn = [_drawn(record, index) for index, record in enumerate(drawn_raw)]
+    cells = [cell_of(record) for record in drawn]
+    if len(set(cells)) != len(cells):
+        _fail("draw holds two records for one metre of one side")
+
     return {
         "format": FORMAT,
         "version": VERSION,
@@ -199,6 +262,9 @@ def validate(raw: Any) -> dict[str, Any]:
         "track": track,
         "compile": {"smooth_borders": smooth},
         "exclude": areas,
+        # By position, as a bundle's records are: a pull request that draws a
+        # bridge shows the bridge, not a reshuffle.
+        "draw": sorted(drawn, key=lambda r: (r["x"], r["z"], r["side"])),
     }
 
 
@@ -217,15 +283,38 @@ def dumps(doc: dict[str, Any]) -> str:
     for key in HEADER_KEYS:
         lines.append(f"{_compact(key)}:{_compact(doc[key])},")
     areas = [_compact({key: area[key] for key in AREA_KEYS}) for area in doc["exclude"]]
-    if areas:
-        lines.append('"exclude":[\n  ' + ",\n  ".join(areas) + "\n]")
-    else:
-        lines.append('"exclude":[]')
+    drawn = [_compact({key: record[key] for key in DRAWN_KEYS}) for record in doc["draw"]]
+    for name, rows, last in (("exclude", areas, False), ("draw", drawn, True)):
+        body = "[\n  " + ",\n  ".join(rows) + "\n]" if rows else "[]"
+        lines.append(f"{_compact(name)}:{body}" + ("" if last else ","))
     lines.append("}")
     return "\n".join(lines) + "\n"
 
 
 # ── what a correction does ─────────────────────────────────────────────────
+
+
+def cell_of(record: dict[str, Any]) -> tuple[int, int, str]:
+    """The metre of one side a record occupies — bundle_format.edge_key's rule."""
+    return (round(record["x"] / GRID_M), round(record["z"] / GRID_M), record["side"])
+
+
+def same_level(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """bundle_format's: the same road unless both know their height and differ."""
+    ya, yb = a.get("y"), b.get("y")
+    return ya is None or yb is None or abs(ya - yb) <= LEVEL_SEP_M
+
+
+def with_drawn(held: list[dict[str, Any]], more: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """What is drawn already, and what an edit draws: what is there stays, and
+    a second record for a metre that has one is dropped."""
+    out = list(held)
+    taken = {cell_of(record) for record in held}
+    for record in more:
+        if cell_of(record) not in taken:
+            taken.add(cell_of(record))
+            out.append({key: record.get(key) for key in DRAWN_KEYS})
+    return out
 
 
 def polygon_area(polygon: list[list[float]]) -> float:
@@ -285,11 +374,29 @@ def apply(bundle: dict[str, Any], doc: dict[str, Any] | None) -> dict[str, Any]:
     no longer follow from its records — and is not meant to be: like
     `sync_job.publishable_copy`, it exists to be compiled and thrown away.
     """
-    drop = set(excluded(bundle.get("edges") or [], doc))
-    if not drop:
+    edges = bundle.get("edges") or []
+    drop = set(excluded(edges, doc))
+    drawn = (doc or {}).get("draw") or []
+    if not drop and not drawn:
         return bundle
+    kept = [edge for i, edge in enumerate(edges) if i not in drop]
+
+    # What was drawn goes in with the evidence, unless an area keeps it out —
+    # `only_drawn` is how a bridge is taken back — or somebody has since
+    # driven that metre: a drawn record never replaces a driven one.
+    surveyed: dict[tuple[int, int, str], list[dict[str, Any]]] = {}
+    for edge in edges:
+        surveyed.setdefault(cell_of(edge), []).append(edge)
+    hidden = set(excluded(drawn, doc))
+    for i, record in enumerate(drawn):
+        if i in hidden:
+            continue
+        if any(same_level(record, edge) for edge in surveyed.get(cell_of(record), ())):
+            continue
+        kept.append(copy.deepcopy(record))
+
     out = copy.copy(bundle)
-    out["edges"] = [edge for i, edge in enumerate(bundle["edges"]) if i not in drop]
+    out["edges"] = kept
     return out
 
 

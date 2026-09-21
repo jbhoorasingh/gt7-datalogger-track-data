@@ -347,6 +347,23 @@ voter's wall. `tools/corrections.py` is the format:
   is taken back without hiding the real border once somebody surveys it.
 - **`compile.smooth_borders`** — this circuit's own answer about smoothing,
   over the service-wide switch; `null` follows the switch.
+- **`draw`** — border records somebody DREW: a bridge across a gap, a kerb
+  nobody drove. The same shape as a bundle's records, every vote under a
+  `drawn-` source, compiled with the evidence as though they were in it. A
+  surveyed record in the same metre wins, so a bridge gives way on its own
+  once somebody drives the gap.
+
+`draw` is here, and **not in the bundle**, for a reason that cost a red `main`
+to learn. The bundle is what the datalogger imports; its validator takes a
+source id to be hex, and refuses a bundle carrying `drawn-524eff6e` whole.
+The first two edits ever merged put their drawn records in their bundles:
+"the app still accepts what we ship" failed, and the pack — which only ran
+this repository's validator — shipped two circuits no app would load. So an
+edit never touches `tracks/` now. That also means it never touches
+`index.json`, whose grand total is one line that any two pull requests adding
+a record used to fight over: two edits cannot collide in a file neither writes.
+Both the job, before it calls a pull request clean, and the pack, before it
+ships, now ask the app (`tools/check_app_agrees.py`).
 
 Taking an area out of the file brings its records back at the next publish:
 the bundle never lost them. `validate.py` holds a corrections file to what it
@@ -355,8 +372,8 @@ and `python tools/test_corrections.py` tests the format.
 
 They are written by the sync service's **track editor**. An administrator's
 edit reaches this repository the way a survey does, as a pull request the job
-opens (`edit/<slug>`): drawn records merged into the bundle under a `drawn-`
-source, the corrections file beside it, the gate's verdict in the body. The
+opens (`edit/<slug>`): one file, `corrections/<slug>.json`, carrying what was
+excluded and what was drawn, with the gate's verdict in the body. The
 job never merges one — an edit is one person's opinion about the evidence —
 rebuilds it from `main` on every run while it waits (pushing only when that
 changes something, so a quiet night leaves it quiet)

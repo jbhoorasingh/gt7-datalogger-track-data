@@ -5,7 +5,7 @@
  "counts": {
   "configurations": 121,
   "surveyed": 24,
-  "points": 128191,
+  "points": 128012,
   "corners_labelled": 139
  },
  "unmatched_bundles": [],
@@ -247,16 +247,16 @@
    "bundle": {
     "file": "tracks/autodrome-lago-maggiore-east-end.json",
     "track": "Autodrome Lago Maggiore - East End",
-    "points": 3170,
-    "manual_points": 366,
+    "points": 3144,
+    "manual_points": 340,
     "elevation_pct": 0.0,
-    "runs": 7,
-    "sources": 5,
+    "runs": 4,
+    "sources": 2,
     "finish_crossings": 6,
     "corners": 0,
     "sections": 0,
-    "updated_at": "2026-09-21T14:53:25.069Z",
-    "bytes": 549353
+    "updated_at": "2026-09-15T22:21:59.792435+00:00",
+    "bytes": 545412
    }
   },
   {
@@ -619,16 +619,16 @@
    "bundle": {
     "file": "tracks/circuit-de-barcelona-catalunya-gp-layout.json",
     "track": "Circuit de Barcelona-Catalunya GP Layout",
-    "points": 5477,
-    "manual_points": 4667,
-    "elevation_pct": 97.2,
-    "runs": 12,
-    "sources": 12,
+    "points": 5324,
+    "manual_points": 4514,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
     "finish_crossings": 3,
     "corners": 0,
     "sections": 0,
-    "updated_at": "2026-09-21T17:34:42.990Z",
-    "bytes": 846981
+    "updated_at": "2026-09-20T17:34:54.730533+00:00",
+    "bytes": 823551
    }
   },
   {

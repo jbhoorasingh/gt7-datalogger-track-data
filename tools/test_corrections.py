@@ -143,5 +143,87 @@ class ExclusionTests(unittest.TestCase):
         self.assertIs(corrections.apply(bundle, corrections.empty("f18da2", "Tsukuba Circuit")), bundle)
 
 
+def drawn(x: float, z: float, side: str = "R", kind: str = "edge", y: float | None = None,
+          source: str = "drawn-0a1b2c3d") -> dict[str, Any]:
+    return {"x": x, "z": z, "y": y, "hx": 1.0, "hz": 0.0, "side": side, "kind": kind,
+            "votes": {kind: {source: [1, 1]}}, "run": 1, "tw": None}
+
+
+class DrawnTests(unittest.TestCase):
+    """What somebody drew is kept here and not in the bundle, because the
+    bundle is what the datalogger imports and it refuses `drawn-` sources."""
+
+    def doc(self, *records: dict[str, Any], areas: tuple[dict[str, Any], ...] = ()) -> dict[str, Any]:
+        out = document(*areas)
+        out["draw"] = list(records)
+        return out
+
+    def test_only_a_drawn_source_may_be_drawn(self) -> None:
+        # A record under an installation's id is a lap, and laps are not
+        # written here: that would be forging somebody's survey.
+        with self.assertRaisesRegex(ValueError, "only a drawn- source may be drawn"):
+            corrections.validate(self.doc(drawn(1, 1, source="88fcdd09894f")))
+        mixed = drawn(1, 1)
+        mixed["votes"]["edge"]["88fcdd09894f"] = [1, 1]
+        with self.assertRaisesRegex(ValueError, "only a drawn- source"):
+            corrections.validate(self.doc(mixed))
+
+    def test_what_else_is_refused(self) -> None:
+        for message, bad in {
+            "nobody can infer": drawn(1, 1, kind="auto"),
+            "side must be": drawn(1, 1, side="X"),
+            "x must be a number": {**drawn(1, 1), "x": "1"},
+            "not on any circuit": drawn(9e9, 1),
+            "unknown key": {**drawn(1, 1), "delete": True},
+            "votes must vote for its own kind": {**drawn(1, 1), "votes": {"wall": {"drawn-0a1b2c3d": [1, 1]}}},
+        }.items():
+            with self.assertRaisesRegex(ValueError, message):
+                corrections.validate(self.doc(bad))
+        with self.assertRaisesRegex(ValueError, "two records for one metre"):
+            corrections.validate(self.doc(drawn(1.2, 1.1), drawn(0.9, 1.3)))
+
+    def test_it_is_compiled_with_the_evidence_and_the_bundle_is_not_touched(self) -> None:
+        bundle = {"edges": [edge(50, 50)], "meta": {"runs": 1}}
+        before = json.dumps(bundle, sort_keys=True)
+        out = corrections.apply(bundle, corrections.validate(self.doc(drawn(100, 0), drawn(101, 0))))
+        self.assertEqual(json.dumps(bundle, sort_keys=True), before)
+        self.assertEqual([(e["x"], e["z"]) for e in out["edges"]], [(50, 50), (100, 0), (101, 0)])
+        self.assertFalse(corrections.is_empty(self.doc(drawn(100, 0))))
+
+    def test_a_driven_metre_beats_a_drawn_one(self) -> None:
+        # Somebody finally surveys the gap a bridge was drawn across. The
+        # bridge gives way, metre by metre, and nothing has to be edited.
+        bundle = {"edges": [edge(100.2, 0.1)]}
+        out = corrections.apply(bundle, corrections.validate(self.doc(drawn(100, 0), drawn(101, 0))))
+        self.assertEqual([(e["x"], e["votes"]["edge"]) for e in out["edges"]],
+                         [(100.2, {"88fcdd09894f": [1, 1]}), (101, {"drawn-0a1b2c3d": [1, 1]})])
+        # But a road on another level is another road: a bridge drawn on the
+        # deck is not displaced by the road underneath it.
+        under = {"edges": [edge(100.2, 0.1, y=0.0)]}
+        kept = corrections.apply(under, corrections.validate(self.doc(drawn(100, 0, y=8.0))))
+        self.assertEqual(len(kept["edges"]), 2)
+
+    def test_an_area_takes_a_drawn_bridge_back(self) -> None:
+        back = area(only_drawn=True)
+        out = corrections.apply({"edges": [edge(5, 5)]},
+                                corrections.validate(self.doc(drawn(6, 6), drawn(50, 50), areas=(back,))))
+        self.assertEqual([(e["x"], e["z"]) for e in out["edges"]], [(5, 5), (50, 50)])
+
+    def test_what_is_drawn_already_stays_and_a_second_record_for_a_metre_is_dropped(self) -> None:
+        held = [drawn(1, 1), drawn(2, 1)]
+        more = [drawn(2.2, 0.9), drawn(3, 1)]
+        self.assertEqual([r["x"] for r in corrections.with_drawn(held, more)], [1, 2, 3])
+        self.assertEqual(corrections.with_drawn(corrections.with_drawn(held, more), more),
+                         corrections.with_drawn(held, more))
+
+    def test_canonical_form_is_a_record_a_line_by_position(self) -> None:
+        text = corrections.dumps(self.doc(drawn(9, 1), drawn(2, 1), areas=(area(),)))
+        self.assertEqual(corrections.dumps(json.loads(text)), text)
+        rows = [line for line in text.splitlines() if line.lstrip().startswith('{"x"')]
+        self.assertEqual([json.loads(row.rstrip(","))["x"] for row in rows], [2, 9])
+        # A file with nothing drawn still says so, in the same place.
+        self.assertIn('"draw":[]', corrections.dumps(document(area())))
+
+
 if __name__ == "__main__":
     unittest.main()
