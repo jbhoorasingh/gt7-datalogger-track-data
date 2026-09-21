@@ -413,11 +413,24 @@ class CommittedSignatureTests(unittest.TestCase):
         self.assertGreater(borrowed, 0)
 
     def test_every_bundle_in_this_repository_is_a_survey_row(self) -> None:
+        """Every forward bundle, that is; a reverse one is carried by its twin.
+
+        `survey_rows` gives a reverse layout no row of its own, on purpose: the
+        forward row names it in `reverse`, which is what the app reads. This
+        test predates the first reverse bundle and used to ask for a row per
+        bundle, which no reverse survey can ever satisfy.
+        """
         bundles = {json.loads(p.read_text(encoding="utf-8"))["meta"]["official"]["official_id"]
                    for p in sorted(build_signatures.TRACKS.glob("*.json"))}
-        surveyed = {r["official_id"] for r in self.doc["signatures"]
-                    if r["provenance"] == "survey"}
-        self.assertEqual(bundles, surveyed)
+        rows = self.doc["signatures"]
+        surveyed = {r["official_id"] for r in rows if r["provenance"] == "survey"}
+        carried = {r["reverse"]["official_id"] for r in rows if r.get("reverse")}
+
+        reverse_bundles = bundles - surveyed
+        self.assertTrue(surveyed <= bundles, "a survey row with no bundle behind it")
+        self.assertTrue(reverse_bundles <= carried,
+                        f"bundles with no row and no forward twin naming them: "
+                        f"{sorted(reverse_bundles - carried)}")
 
     def test_ambiguity_is_recorded_from_both_sides_where_it_is_mutual(self) -> None:
         rows = {r["official_id"]: r for r in self.doc["signatures"]}
