@@ -66,6 +66,7 @@ from sync_job import (  # noqa: E402
     kind_changes,
     new_metres,
     policy_kinds,
+    candidate_document,
     publishable_copy,
     run,
     with_authored,
@@ -233,6 +234,16 @@ class AuthoredWorkTests(unittest.TestCase):
         out["corners"][0]["name"] = "changed"
         self.assertEqual(doc["corners"][0]["name"], "Tunnel Hairpin")
 
+    def test_a_candidate_also_carries_the_crossings_the_gate_measured(self) -> None:
+        crossings = [{"x": 0.0, "z": 1.0, "hx": 1.0, "hz": 0.0, "lap": 2.0}]
+        doc = {"corners": CORNERS, "sections": SECTIONS, "finish_crossings": crossings}
+        out = candidate_document({"borders": {"L": [], "R": []}}, doc)
+        self.assertEqual(out["finish_crossings"], crossings)
+        self.assertEqual(out["corners"], CORNERS)
+        out["finish_crossings"][0]["x"] = 9.0
+        self.assertEqual(doc["finish_crossings"][0]["x"], 0.0)
+        self.assertEqual(candidate_document({"borders": {}}, {})["finish_crossings"], [])
+
     def test_a_circuit_nobody_has_marked_publishes_empty_lists(self) -> None:
         out = with_authored({"borders": {}}, {})
         self.assertEqual((out["corners"], out["sections"]), ([], []))
@@ -348,6 +359,8 @@ class FakeService:
         self.issues: list[dict[str, Any]] = []
         self.merge_requests: list[dict[str, Any]] = []
         self.compiled: dict[str, dict[str, Any]] = {}
+        self.candidates: dict[str, tuple[dict[str, Any], str]] = {}
+        self.refuses_candidates = False
         self.published: list[tuple[str, dict[str, Any]]] = []
         self.runs: list[dict[str, Any]] = []
         self.kind: list[dict[str, Any]] = []
@@ -394,6 +407,12 @@ class FakeService:
     def put_compiled(self, official_id: str, compiled: dict[str, Any]) -> dict[str, Any]:
         self.compiled[official_id] = compiled
         return {"official_id": official_id, "r2_key": f"published/{official_id}.json"}
+
+    def put_candidate(self, official_id: str, compiled: dict[str, Any], pr_url: str) -> dict[str, Any]:
+        if self.refuses_candidates:
+            raise ServiceError(404, "not_found", "no such route")
+        self.candidates[official_id] = (compiled, pr_url)
+        return {"official_id": official_id, "r2_key": f"candidates/{official_id}.json"}
 
     def publish(self, official_id: str, facts: dict[str, Any]) -> dict[str, Any]:
         self.published.append((official_id, facts))
@@ -529,6 +548,24 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(service.issues, [])
         self.assertEqual(service.runs[-1]["prs_opened"], 1)
         self.assertEqual(service.runs[-1]["awaiting_review"], 1)
+        # Whoever reviews it is sent what it would publish, under the pull request's address.
+        sent, pr_url = service.candidates[DEEP_FOREST]
+        self.assertTrue(pr_url.startswith("https://github.com/"))
+        self.assertEqual(sent["format"], "gt7-datalogger-track-compiled")
+        self.assertTrue(sent["borders"]["L"])
+        self.assertEqual(len(sent["finish_crossings"]), len(self.existing["finish_crossings"]))
+        self.assertEqual(service.compiled, {})
+
+    def test_a_service_that_will_not_take_the_geometry_does_not_fail_the_run(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        service.refuses_candidates = True
+        ok, outcomes = run(self.context(service, FakeForge()))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "pull_request")
+        self.assertEqual(service.merge_requests[0]["status"], "awaiting_review")
+        self.assertIn("did not take the pull request's geometry", self.log.getvalue())
 
     def test_with_auto_merge_on_the_gate_merges_reports_and_publishes(self) -> None:
         upload = survey_subset(self.existing, "feedbeef")
@@ -546,6 +583,8 @@ class EndToEndTests(unittest.TestCase):
         self.assertTrue(service.statuses[0][3].startswith("https://github.com/"))
         self.assertIn(DEEP_FOREST, service.compiled)
         self.assertEqual(service.compiled[DEEP_FOREST]["format"], "gt7-datalogger-track-compiled")
+        # Nothing is waiting, so there is no candidate for anybody to look at.
+        self.assertEqual(service.candidates, {})
         official_id, facts = service.published[0]
         self.assertEqual(official_id, DEEP_FOREST)
         self.assertEqual(facts["latest_r2_key"], f"published/{DEEP_FOREST}.json")
@@ -708,6 +747,9 @@ class ContractTests(unittest.TestCase):
                                  "R": {"surveyed_m": 1, "gap_m": 0, "pct": 100, "closed": True}, "road_pct": 100}}
         stored = self.service.put_compiled("sync-test", compiled)
         self.assertEqual(stored["r2_key"], "published/sync-test.json")
+        waiting = self.service.put_candidate("sync-test", {**compiled, "finish_crossings": [{"x": 0, "z": 1}]},
+                                             "https://example.invalid/pull/1")
+        self.assertEqual(waiting["r2_key"], "candidates/sync-test.json")
         gate = evaluate_gate(gate_input(), SETTINGS)
         reply = self.service.report_merge_request(official_id="sync-test", pr_url="https://example.invalid/pull/1",
                                                   branch="sync/sync-test", accounts=1, new_metres=2,
