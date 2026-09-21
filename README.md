@@ -300,6 +300,45 @@ can be run on its own, switch or no switch, and
 answer: both test suites read it, and a change to one routine is a change to
 both.
 
+### Corrections, and why nothing is ever deleted
+
+A bundle is evidence, and evidence only adds up: a merge is a union per metre
+and removes nothing. That is the right rule for laps and the wrong one for
+mistakes — a pit wall recorded as the right-hand border is in the file for
+good, and deleting it does not help, because a datalogger uploads its *whole*
+bundle on every autosave and the next merge puts every deleted metre back.
+
+So a correction is never made to the evidence. It lives beside it, in
+`corrections/<slug>.json`, and is applied to what is *compiled* from the
+evidence — by `sync_job.py`, on every run, to the published geometry and its
+candidate alike — which is how the corroboration policy already treats a lone
+voter's wall. `tools/corrections.py` is the format:
+
+- **`exclude`** — areas of ground, each a polygon in world metres with the
+  sides it applies to and the reason, inside which border records are not
+  compiled. Areas and not cells, because a survey jitters: next week's pit wall
+  lands in the cells next door. `y` bounds an area to one road level;
+  `only_drawn` limits it to records nobody drove, which is how a drawn bridge
+  is taken back without hiding the real border once somebody surveys it.
+- **`compile.smooth_borders`** — this circuit's own answer about smoothing,
+  over the service-wide switch; `null` follows the switch.
+
+Taking an area out of the file brings its records back at the next publish:
+the bundle never lost them. `validate.py` holds a corrections file to what it
+holds a bundle to — the format, the catalog, the filename, canonical form —
+and `python tools/test_corrections.py` tests the format.
+
+They are written by the sync service's **track editor**. An administrator's
+edit reaches this repository the way a survey does, as a pull request the job
+opens (`edit/<slug>`): drawn records merged into the bundle under a `drawn-`
+source, the corrections file beside it, the gate's verdict in the body. The
+job never merges one — an edit is one person's opinion about the evidence —
+and sends what it would publish to the service, so whoever reviews it can look
+at it against what is published now. An edit may carry votes only under a
+`drawn-` source, and is refused otherwise: the editor draws, it does not
+survey. The pack does not ship corrections yet, so a datalogger compiling a
+bundle for itself still draws what a correction hides.
+
 It needs two secrets on this repository: `GT7_SYNC_SERVICE_KEY` (the service
 key, rotated from the service's Admin → Settings) and the workflow's own
 `GITHUB_TOKEN`. Run it yourself to look before the job does — nothing is
