@@ -366,6 +366,25 @@ def publishable_copy(doc: dict[str, Any], kinds: dict[tuple[int, int, str], str]
     return out
 
 
+def with_authored(compiled: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
+    """The compiled geometry with the bundle's corners and sections riding along.
+
+    The compiler draws what was surveyed and knows nothing of what was
+    authored: where somebody marked each apex and what they called it. Those
+    live in the bundle, are kept through a merge rather than recomputed, and
+    are corrected here by pull request — so the bundle on `main` is the one
+    authority for them, and the service, which only ever sees the compiled
+    document, has no other way to learn them. They are copied rather than
+    compiled: the service draws a corner at its apex and prints its name.
+
+    A copy, so the geometry the gate measured is the geometry it measured.
+    """
+    out = dict(compiled)
+    out["corners"] = copy.deepcopy(doc.get("corners") or [])
+    out["sections"] = copy.deepcopy(doc.get("sections") or [])
+    return out
+
+
 def stored_kinds(doc: dict[str, Any] | None) -> dict[tuple[int, int, str], str]:
     """The format's own kinds, as the file on disk carries them."""
     if not doc:
@@ -1011,7 +1030,7 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
             kinds = policy_kinds(existing, accounts, quorum,
                                  _decisions_by_cell(ctx.service.kind_decisions(official_id)))["kinds"]
             compiled = compile_geometry(publishable_copy(existing, kinds))
-            stored = ctx.service.put_compiled(official_id, compiled)
+            stored = ctx.service.put_compiled(official_id, with_authored(compiled, existing))
             ctx.service.publish(official_id, publication_facts(
                 config, existing, compiled, accounts, stored["r2_key"], pr_url, "auto_merged"))
         return outcome
@@ -1144,7 +1163,7 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
             official_id=official_id, pr_url=pr_url, branch=branch, accounts=accounts_count,
             new_metres=new_m, kind_changes=len(changes), gate=gate, status=status)
         if status == "auto_merged":
-            stored = ctx.service.put_compiled(official_id, compiled_after)
+            stored = ctx.service.put_compiled(official_id, with_authored(compiled_after, merged))
             ctx.service.publish(official_id, publication_facts(
                 config, merged, compiled_after, accounts, stored["r2_key"], pr_url, "auto_merged"))
             _report(ctx, merged_ids, "merged", "merged and published", pr_url)
@@ -1232,7 +1251,7 @@ def publish_existing(ctx: Context) -> int:
         if ctx.dry_run or not ctx.report:
             ctx.log(f"{official_id}  {config['official_name']}: would publish ({summary})")
             continue
-        stored = ctx.service.put_compiled(official_id, compiled)
+        stored = ctx.service.put_compiled(official_id, with_authored(compiled, existing))
         ctx.service.publish(official_id, publication_facts(
             config, existing, compiled, ctx.accounts, stored["r2_key"], "", "auto_merged"))
         ctx.log(f"{official_id}  {config['official_name']}: published ({summary})")
