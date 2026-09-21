@@ -53,6 +53,7 @@ try:
 except ImportError:
     HAVE_COMPILER = False
 
+import corrections  # noqa: E402
 import sync_job  # noqa: E402
 from sync_job import (  # noqa: E402
     Context,
@@ -422,6 +423,24 @@ class FakeService:
         self.runs: list[dict[str, Any]] = []
         self.kind: list[dict[str, Any]] = []
         self.layout: list[dict[str, Any]] = []
+        self.edits: list[dict[str, Any]] = []
+        self.edit_docs: dict[str, dict[str, Any]] = {}
+        self.edit_reports: list[tuple[str, str, str, str]] = []
+
+    def open_edits(self, official_id: str = "") -> list[dict[str, Any]]:
+        return [dict(e) for e in self.edits
+                if e.get("status", "pending") in ("pending", "pr_open")
+                and (not official_id or e["official_id"] == official_id)]
+
+    def fetch_edit(self, edit_id: str) -> dict[str, Any]:
+        return copy.deepcopy(self.edit_docs[edit_id])
+
+    def report_edit(self, edit_id: str, status: str, reason: str = "", pr_url: str = "") -> None:
+        self.edit_reports.append((edit_id, status, reason, pr_url))
+        for edit in self.edits:
+            if edit["id"] == edit_id:
+                edit["status"] = status
+                edit["pr_url"] = pr_url or edit.get("pr_url", "")
 
     def policy(self) -> dict[str, Any]:
         return self._policy
@@ -483,16 +502,18 @@ class FakeForge:
         self.merged: list[str] = []
         self.workflows: list[str] = []
         self.already_merged: dict[str, str] = {}
+        self.open: dict[str, str] = {}
 
     def open_pr_url(self, branch: str) -> str:
-        return ""
+        return self.open.get(branch, "")
 
     def merged_pr_url(self, branch: str) -> str:
         return self.already_merged.get(branch, "")
 
     def upsert(self, branch: str, title: str, body: str, draft: bool) -> str:
         self.upserts.append((branch, title, body, draft))
-        return f"https://github.com/example/track-data/pull/{len(self.upserts)}"
+        self.open[branch] = f"https://github.com/example/track-data/pull/{len(self.upserts)}"
+        return self.open[branch]
 
     def merge(self, branch: str, attempts: int = 5, wait: Any = None) -> bool:
         if self.merges:
@@ -791,6 +812,253 @@ class EndToEndTests(unittest.TestCase):
 
 
 # ── the wire, against a live service ────────────────────────────────────────
+
+
+# ── an administrator's edit ────────────────────────────────────────────────
+
+DRAWN = "drawn-0a1b2c3d"
+
+
+def drawn_bundle(existing: dict[str, Any], points: list[tuple[float, float]], side: str = "R",
+                 source: str = DRAWN) -> dict[str, Any]:
+    """What the editor sends for a border somebody drew: a bundle of its own,
+    every record filed under a drawn source."""
+    return {
+        "format": existing["format"], "version": existing["version"],
+        "meta": {"track": existing["meta"]["track"], "runs": 1, "source_runs": {source: 1},
+                 "updated_at": "2026-09-21T00:00:00+00:00", "official": existing["meta"]["official"]},
+        "edges": [{"x": x, "z": z, "y": None, "hx": 1.0, "hz": 0.0, "side": side, "kind": "edge",
+                   "votes": {"edge": {source: [1, 1]}}, "run": 1, "tw": None} for x, z in points],
+        "finish_crossings": [], "corners": [], "sections": [],
+    }
+
+
+def edit_document(official_id: str, track: str, *, note: str = "the pit wall is not the track's edge",
+                  areas: list[dict[str, Any]] | None = None, smooth: bool | None = None,
+                  drawn: dict[str, Any] | None = None, base: str = "") -> dict[str, Any]:
+    corrected = corrections.empty(official_id, track)
+    corrected["exclude"] = areas or []
+    corrected["compile"]["smooth_borders"] = smooth
+    return {"format": sync_job.EDIT_FORMAT, "version": sync_job.EDIT_VERSION, "official_id": official_id,
+            "note": note, "drawn": drawn, "corrections": corrected, "base": {"corrections_sha256": base}}
+
+
+def square(x: float, z: float, half: float = 20.0, **overrides: Any) -> dict[str, Any]:
+    area = {"id": "a1", "sides": ["R"], "y": None, "only_drawn": False,
+            "polygon": [[x - half, z - half], [x + half, z - half], [x + half, z + half], [x - half, z + half]],
+            "reason": "the pit wall, recorded as the right-hand border", "by": "Alice",
+            "at": "2026-09-21T00:00:00Z"}
+    area.update(overrides)
+    return area
+
+
+class EditValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.existing = load_survey()
+
+    def test_an_edit_may_only_add_what_was_drawn(self) -> None:
+        # The editor draws; it does not survey. Votes under an installation's
+        # id would be somebody's laps, forged.
+        forged = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(6)], source="20597c92fb01")
+        with self.assertRaisesRegex(ValueError, "may only add records under a drawn-"):
+            sync_job.validate_edit(edit_document(DEEP_FOREST, "Deep Forest Raceway", drawn=forged), DEEP_FOREST)
+
+    def test_what_else_is_refused(self) -> None:
+        good = edit_document(DEEP_FOREST, "Deep Forest Raceway")
+        self.assertEqual(sync_job.validate_edit(good, DEEP_FOREST)["note"], good["note"])
+        for message, bad in {
+            "needs a note": {**good, "note": "  "},
+            "filed under": {**good, "official_id": "f18da2"},
+            "format must be": {**good, "format": "nope"},
+            "started from": {**good, "base": {}},
+            "corrections name layout": {**good, "corrections": corrections.empty("f18da2", "Tsukuba Circuit")},
+        }.items():
+            with self.assertRaisesRegex(ValueError, message):
+                sync_job.validate_edit(bad, DEEP_FOREST)
+        crossings = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(6)])
+        crossings["finish_crossings"] = self.existing["finish_crossings"][:1]
+        with self.assertRaisesRegex(ValueError, "borders only"):
+            sync_job.validate_edit({**good, "drawn": crossings}, DEEP_FOREST)
+
+    def test_drawing_the_same_border_in_twice_adds_it_once(self) -> None:
+        # "Is this edit already in main?" is answered by merging it again and
+        # seeing nothing change, so merging must be exactly that harmless.
+        drawn = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(6)])
+        once = sync_job.merge_into(self.existing, drawn)
+        twice = sync_job.merge_into(once, drawn)
+        self.assertEqual(sync_job.canonical.dumps(once), sync_job.canonical.dumps(twice))
+        self.assertEqual(len(once["edges"]), len(self.existing["edges"]) + 6)
+
+
+@unittest.skipUnless(HAVE_COMPILER, "needs the datalogger's compiler (app.processing.track_compile)")
+class EditEndToEndTests(unittest.TestCase):
+    """The same temporary repository, edited instead of surveyed."""
+
+    # The fixtures and not the class: inheriting would run every survey test
+    # a second time under this name.
+    setUp = EndToEndTests.setUp
+    tearDown = EndToEndTests.tearDown
+    context = EndToEndTests.context
+    origin_has = EndToEndTests.origin_has
+
+    def right_border_spot(self) -> tuple[float, float]:
+        edge = next(e for e in self.existing["edges"] if e["side"] == "R")
+        return edge["x"], edge["z"]
+
+    def service_with(self, doc: dict[str, Any], **row: Any) -> FakeService:
+        service = FakeService([], {})
+        service.edits = [{"id": "edt_1", "official_id": DEEP_FOREST, "status": "pending",
+                          "created_by": "Alice", "pr_url": "", **row}]
+        service.edit_docs = {"edt_1": doc}
+        return service
+
+    def test_an_edit_becomes_a_pull_request_a_person_has_to_merge(self) -> None:
+        x, z = self.right_border_spot()
+        hidden = len(corrections.excluded(self.existing["edges"], {"exclude": [square(x, z)]}))
+        self.assertGreater(hidden, 5)
+        drawn = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(8)])
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway",
+                                                  areas=[square(x, z)], drawn=drawn))
+        # Auto-merge on, a passing gate or not: an edit is one person's opinion
+        # about the evidence, and a machine does not merge those.
+        service._policy["gate"]["auto_merge"] = True
+        forge = FakeForge(merges=True)
+        ok, _ = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(forge.merged, [])
+        branch, title, body, draft = forge.upserts[0]
+        self.assertEqual(branch, "edit/deep-forest-raceway")
+        self.assertIn("(editor)", title)
+        self.assertFalse(draft, self.log.getvalue())
+        self.assertIn("Nothing is deleted", body)
+        self.assertIn("the pit wall, recorded as the right-hand border", body)
+        self.assertIn(f"keep {hidden} surveyed records out", body)
+        self.assertIn("border drawn in, under a `drawn-` source: 8 m", body)
+
+        # The branch carries the corrections beside the bundle, and the bundle
+        # kept every record it had: the drawn ones were added, none removed.
+        pushed = json.loads(self.origin_has(branch, "corrections/deep-forest-raceway.json"))
+        self.assertEqual(pushed["exclude"][0]["id"], "a1")
+        bundle = json.loads(self.origin_has(branch, "tracks/deep-forest-raceway.json"))
+        self.assertEqual(len(bundle["edges"]), len(self.existing["edges"]) + 8)
+        self.assertIn(DRAWN, bundle["meta"]["source_runs"])
+
+        # The person deciding gets to look at it, and is told where it stands.
+        self.assertEqual(service.merge_requests[0]["status"], "awaiting_review")
+        self.assertEqual(service.merge_requests[0]["branch"], branch)
+        candidate, pr_url = service.candidates[DEEP_FOREST]
+        self.assertEqual(service.edit_reports, [("edt_1", "pr_open", "", pr_url)])
+        self.assertEqual(service.published, [])
+        # And what they look at has the excluded stretch taken out of it.
+        untouched = sync_job.compile_geometry(self.existing, sync_job.smooth_borders(service.policy()))
+        self.assertLess(candidate["coverage"]["R"]["surveyed_m"], untouched["coverage"]["R"]["surveyed_m"])
+        self.assertEqual(service.runs[-1]["detail"]["edits"][0]["action"], "pull_request")
+
+    def land(self, branch: str) -> None:
+        """What a person pressing Merge on GitHub does."""
+        git = lambda *a: subprocess.run(["git", *a], cwd=self.repo, check=True, capture_output=True, text=True)  # noqa: E731
+        git("fetch", "-q", "origin", branch)
+        git("checkout", "-q", "main")
+        git("merge", "-q", "--no-edit", f"origin/{branch}")
+        git("push", "-q", "origin", "main")
+
+    def test_a_merged_edit_is_published_with_its_corrections_and_reported_applied(self) -> None:
+        x, z = self.right_border_spot()
+        doc = edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)])
+        service = self.service_with(doc)
+        forge = FakeForge()
+        run(self.context(service, forge))
+        pr_url = forge.open["edit/deep-forest-raceway"]
+        self.land("edit/deep-forest-raceway")
+        forge.open.clear()
+        forge.already_merged["edit/deep-forest-raceway"] = pr_url
+
+        ok, _ = run(self.context(service, forge))
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "applied"))
+        self.assertEqual(len(forge.upserts), 1)  # no second pull request
+        official_id, facts = service.published[-1]
+        self.assertEqual((official_id, facts["pr_url"]), (DEEP_FOREST, pr_url))
+        # What is published is the evidence with the correction applied …
+        published = service.compiled[DEEP_FOREST]
+        untouched = sync_job.compile_geometry(self.existing, sync_job.smooth_borders(service.policy()))
+        self.assertLess(published["coverage"]["R"]["surveyed_m"], untouched["coverage"]["R"]["surveyed_m"])
+        # … and a finished edit is not picked up again.
+        self.assertEqual(service.open_edits(), [])
+
+    def test_a_correction_outlives_the_next_upload_of_the_very_records_it_hides(self) -> None:
+        # The reason corrections exist. A logger uploads its whole bundle on
+        # every autosave; were the records deleted, this upload would restore
+        # them. They were never deleted, and the area still keeps them out.
+        x, z = self.right_border_spot()
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        self.land("edit/deep-forest-raceway")
+        forge.open.clear()
+        run(self.context(service, forge))
+        corrected = service.compiled[DEEP_FOREST]["coverage"]["R"]["surveyed_m"]
+
+        again = FakeService([upload_row("upl_9", DEEP_FOREST, "feedbeef", BOB)],
+                            {"upl_9": survey_subset(self.existing, "feedbeef", every=1)})
+        again._policy["gate"]["auto_merge"] = True
+        ok, outcomes = run(self.context(again, FakeForge(merges=True)))
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "merged", self.log.getvalue())
+        self.assertAlmostEqual(again.compiled[DEEP_FOREST]["coverage"]["R"]["surveyed_m"], corrected, delta=1.0)
+
+    def test_a_pull_request_closed_unmerged_closes_the_edit(self) -> None:
+        x, z = self.right_border_spot()
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        forge.open.clear()  # somebody closed it
+
+        run(self.context(service, forge))
+        self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "closed"))
+        self.assertEqual(len(forge.upserts), 1)  # and it is not reopened every night
+
+    def test_a_waiting_pull_request_is_left_alone(self) -> None:
+        x, z = self.right_border_spot()
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        run(self.context(service, forge))
+        self.assertEqual(len(forge.upserts), 1)
+        self.assertEqual([r[1] for r in service.edit_reports], ["pr_open"])
+
+    def test_an_edit_started_from_other_corrections_is_stale(self) -> None:
+        x, z = self.right_border_spot()
+        doc = edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)], base="0" * 64)
+        service = self.service_with(doc)
+        forge = FakeForge()
+        run(self.context(service, forge))
+        self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "stale"))
+        self.assertEqual(forge.upserts, [])
+
+    def test_a_forged_edit_is_refused_with_the_reason(self) -> None:
+        forged = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(6)], source="20597c92fb01")
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", drawn=forged))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        edit_id, status, reason, _ = service.edit_reports[-1]
+        self.assertEqual((edit_id, status), ("edt_1", "failed"))
+        self.assertIn("may only add records under a drawn-", reason)
+        self.assertEqual(forge.upserts, [])
+
+    def test_a_circuits_own_answer_about_smoothing_beats_the_switch(self) -> None:
+        if not sync_job.compiler_takes_smooth():
+            self.skipTest("the installed compiler is from before it could smooth")
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", smooth=False,
+                                                  note="this circuit's kerbs are better as recorded"))
+        service._policy["compile"] = {"smooth_borders": True}
+        run(self.context(service, FakeForge()))
+        candidate, _ = service.candidates[DEEP_FOREST]
+        self.assertIsNone(candidate["smoothing"])
+        self.assertIs(sync_job.smoothing_for({"compile": {"smooth_borders": True}}, None), True)
+        self.assertIs(sync_job.smoothing_for({"compile": {"smooth_borders": False}},
+                                             {"compile": {"smooth_borders": True}}), True)
 
 
 @unittest.skipUnless(os.environ.get("GT7_SYNC_TEST_URL") and os.environ.get("GT7_SYNC_SERVICE_KEY"),

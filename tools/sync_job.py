@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import math
 import os
@@ -83,6 +84,7 @@ sys.path.insert(0, str(HERE))
 if os.environ.get("GT7_DATALOGGER_BACKEND"):
     sys.path.insert(0, os.environ["GT7_DATALOGGER_BACKEND"])
 import canonical  # noqa: E402
+import corrections as corrections_format  # noqa: E402
 from add_bundle import merge_into  # noqa: E402
 from build_index import configurations, slugify  # noqa: E402
 from build_signatures import (  # noqa: E402
@@ -250,6 +252,26 @@ class Service:
     def publish(self, official_id: str, facts: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/v1/tracks/{official_id}/published", body=facts)
 
+    def open_edits(self, official_id: str = "") -> list[dict[str, Any]]:
+        """Edits an administrator made that are not finished with: waiting to
+        become a pull request, or waiting for theirs to be merged. A service
+        from before the editor existed has no such route and no edits."""
+        try:
+            return list(self._request("GET", "/v1/edits", params={"official_id": official_id}).get("edits", []))
+        except ServiceError as exc:
+            if exc.status == 404:
+                return []
+            raise
+
+    def fetch_edit(self, edit_id: str) -> dict[str, Any]:
+        return json.loads(self._request("GET", f"/v1/edits/{edit_id}/document", raw=True))
+
+    def report_edit(self, edit_id: str, status: str, reason: str = "", pr_url: str = "") -> None:
+        body: dict[str, Any] = {"status": status, "reason": reason[:500]}
+        if pr_url:
+            body["pr_url"] = pr_url
+        self._request("POST", f"/v1/edits/{edit_id}/status", body=body)
+
 
 # ── the corroboration policy (spec §5) ─────────────────────────────────────
 
@@ -368,6 +390,20 @@ def publishable_copy(doc: dict[str, Any], kinds: dict[tuple[int, int, str], str]
     for edge in out.get("edges", []):
         edge["kind"] = kinds.get(cell_of(edge), edge.get("kind", "auto"))
     return out
+
+
+def compile_input(doc: dict[str, Any], kinds: dict[tuple[int, int, str], str],
+                  corrected: dict[str, Any] | None) -> dict[str, Any]:
+    """The document the compiler sees: the policy's kinds, and nothing a
+    correction keeps out.
+
+    Both are judgements about the evidence and neither is made to it. The
+    bundle in tracks/ keeps every record and every vote; `corrections/` says
+    which records the map should not draw (see `corrections.py` for why a
+    deletion cannot simply be a deletion), and this is the one place the two
+    meet. Never written to disk.
+    """
+    return corrections_format.apply(publishable_copy(doc, kinds), corrected)
 
 
 def with_authored(compiled: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
@@ -748,6 +784,31 @@ class Repository:
         path.write_text(canonical.dumps(doc), encoding="utf-8")
         return path
 
+    def corrections_path(self, slug: str) -> Path:
+        return self.root / corrections_format.DIRECTORY / f"{slug}.json"
+
+    def read_corrections(self, slug: str) -> tuple[dict[str, Any] | None, str]:
+        """This checkout's corrections for a circuit, and their text: the text
+        is what an edit says it started from."""
+        path = self.corrections_path(slug)
+        if not path.exists():
+            return None, ""
+        text = path.read_text(encoding="utf-8")
+        return corrections_format.validate(json.loads(text)), text
+
+    def write_corrections(self, slug: str, doc: dict[str, Any]) -> Path | None:
+        """Write them, or take the file away when they no longer say anything —
+        a file of nothing is one more thing for a reviewer to open."""
+        path = self.corrections_path(slug)
+        if corrections_format.is_empty(doc):
+            if path.exists():
+                path.unlink()
+                return path
+            return None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(corrections_format.dumps(doc), encoding="utf-8")
+        return path
+
     def _tool(self, script: str, *args: str) -> tuple[bool, str]:
         run = subprocess.run([self.python, str(self.root / "tools" / script), *args],
                              cwd=self.root, capture_output=True, text=True)
@@ -794,6 +855,15 @@ class Git:
             return False
         self.run("commit", "-q", "-m", message)
         return True
+
+    def commit_all(self, paths: list[str], message: str) -> bool:
+        """Like `commit`, for paths that may not be there: an edit can take a
+        corrections file away, or never have had one, and `git add` refuses a
+        pathspec that matches nothing on disk or in the index."""
+        known = [path for path in paths
+                 if (self.root / path).exists()
+                 or self.run("ls-files", "--", path, check=False)]
+        return self.commit(known, message) if known else False
 
     def push_force(self, branch: str, remote: str = "origin") -> None:
         self.run("push", "--force", "-q", remote, branch)
@@ -882,6 +952,13 @@ def smooth_borders(policy: dict[str, Any]) -> bool | None:
     """
     value = (policy.get("compile") or {}).get("smooth_borders")
     return value if isinstance(value, bool) else None
+
+
+def smoothing_for(policy: dict[str, Any], corrected: dict[str, Any] | None) -> bool | None:
+    """Whether this circuit's borders are smoothed: its own answer, from its
+    corrections, and the service-wide switch when it has none."""
+    own = corrections_format.smooth_override(corrected)
+    return own if own is not None else smooth_borders(policy)
 
 
 def compiler_takes_smooth() -> bool:
@@ -1050,6 +1127,10 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
         ctx.git.prepare_branch(branch)
 
     existing, existing_text = ctx.repo.read_bundle(slug)
+    # What a person decided this circuit's evidence gets wrong. Uploads never
+    # change it; it is read so that what they compile to is judged, and
+    # published, with it applied — before and after alike.
+    corrected, _ = ctx.repo.read_corrections(slug)
 
     # Fetch and validate each upload; a document the repository would refuse
     # is refused now, with the validator's own words for the contributor.
@@ -1098,7 +1179,8 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
         if ctx.report and not ctx.dry_run:
             kinds = policy_kinds(existing, accounts, quorum,
                                  _decisions_by_cell(ctx.service.kind_decisions(official_id)))["kinds"]
-            compiled = compile_geometry(publishable_copy(existing, kinds), smooth_borders(ctx.policy))
+            compiled = compile_geometry(compile_input(existing, kinds, corrected),
+                                        smoothing_for(ctx.policy, corrected))
             stored = ctx.service.put_compiled(official_id, with_authored(compiled, existing))
             ctx.service.publish(official_id, publication_facts(
                 config, existing, compiled, accounts, stored["r2_key"], pr_url, "auto_merged"))
@@ -1108,9 +1190,9 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
     decisions = _decisions_by_cell(ctx.service.kind_decisions(official_id))
     after = policy_kinds(merged, accounts, quorum, decisions)
     before = policy_kinds(existing, accounts, quorum, decisions) if existing else None
-    smooth = smooth_borders(ctx.policy)
-    compiled_after = compile_geometry(publishable_copy(merged, after["kinds"]), smooth)
-    compiled_before = (compile_geometry(publishable_copy(existing, before["kinds"]), smooth)
+    smooth = smoothing_for(ctx.policy, corrected)
+    compiled_after = compile_geometry(compile_input(merged, after["kinds"], corrected), smooth)
+    compiled_before = (compile_geometry(compile_input(existing, before["kinds"], corrected), smooth)
                        if existing and before else None)
 
     # Which layout the geometry says this is, and whether a person already answered.
@@ -1250,6 +1332,263 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
     return outcome
 
 
+# ── an administrator's edit ────────────────────────────────────────────────
+#
+# The sync service's track editor produces two things and nothing else: border
+# records somebody DREW (a bridge across a gap, a kerb nobody drove), filed
+# under a `drawn-` source like any other evidence, and corrections — areas the
+# map should not draw, and the circuit's own answer about smoothing. The first
+# merges into the bundle, because it only ever adds. The second goes beside it
+# in corrections/, because it must survive every upload that follows (see
+# corrections.py).
+#
+# Like a survey, an edit enters the shared map only as a merged pull request.
+# Unlike one, it is never merged by a machine: an edit is one person's opinion
+# about the evidence, and the gate's verdict goes in the body for whoever
+# reviews it. What it would publish goes to the service as the candidate, so
+# the person deciding can look at it against what is published now.
+
+EDIT_FORMAT = "gt7-datalogger-track-edit"
+EDIT_VERSION = 1
+EDIT_BRANCH_PREFIX = "edit/"
+MAX_EDIT_NOTE = 500
+
+
+def text_digest(text: str) -> str:
+    """What an edit says it started from: the corrections file as it stood,
+    or nothing when there was none."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest() if text else ""
+
+
+def validate_edit(raw: Any, official_id: str) -> dict[str, Any]:
+    """An edit document, checked as hard as an upload — it comes from an
+    administrator's browser, which is still somebody's browser."""
+    if not isinstance(raw, dict) or raw.get("format") != EDIT_FORMAT:
+        raise ValueError(f"format must be {EDIT_FORMAT}")
+    if raw.get("version") != EDIT_VERSION:
+        raise ValueError(f"version must be {EDIT_VERSION}")
+    if str(raw.get("official_id", "")) != official_id:
+        raise ValueError(f"the edit names layout {raw.get('official_id')!r}, but was filed under {official_id!r}")
+    note = raw.get("note")
+    if not isinstance(note, str) or not note.strip() or len(note) > MAX_EDIT_NOTE:
+        raise ValueError(f"an edit needs a note of at most {MAX_EDIT_NOTE} characters saying what it is for")
+
+    drawn = raw.get("drawn")
+    if drawn is not None:
+        drawn = validate_document(drawn)
+        claimed = str(((drawn.get("meta") or {}).get("official") or {}).get("official_id", ""))
+        if claimed != official_id:
+            raise ValueError(f"the drawn records name layout {claimed!r}, not {official_id!r}")
+        # The editor draws; it does not survey. An edit that carried votes
+        # under anybody's installation id would be forging their laps.
+        sources = set((drawn.get("meta") or {}).get("source_runs", {}))
+        for edge in drawn["edges"]:
+            for by_source in edge["votes"].values():
+                sources.update(by_source)
+        forged = sorted(source for source in sources if not source.startswith(DRAWN_PREFIX))
+        if forged:
+            raise ValueError(f"an edit may only add records under a {DRAWN_PREFIX} source, not {', '.join(forged)}")
+        if drawn.get("finish_crossings") or drawn.get("corners") or drawn.get("sections"):
+            raise ValueError("an edit's drawn records carry borders only: no crossings, corners or sections")
+        if not drawn["edges"]:
+            drawn = None
+
+    corrected = corrections_format.validate(raw.get("corrections"))
+    if corrected["official_id"] != official_id:
+        raise ValueError(f"the corrections name layout {corrected['official_id']!r}, not {official_id!r}")
+
+    base = raw.get("base")
+    base_digest = base.get("corrections_sha256") if isinstance(base, dict) else None
+    if not isinstance(base_digest, str):
+        raise ValueError("an edit must say which corrections it started from (base.corrections_sha256)")
+
+    return {"note": note.strip(), "drawn": drawn, "corrections": corrected, "base": base_digest}
+
+
+@dataclass
+class EditOutcome:
+    id: str
+    official_id: str
+    name: str = ""
+    action: str = "nothing"  # pull_request | applied | waiting | stale | closed | failed
+    pr_url: str = ""
+    reason: str = ""
+
+
+def edit_body(config: dict[str, Any], edit: dict[str, Any], doc: dict[str, Any], drawn_m: int,
+              hidden_before: int, hidden_after: int, smooth_before: bool | None, smooth_after: bool | None,
+              gate: dict[str, Any], checks: list[tuple[str, bool, str]]) -> str:
+    def smoothing(value: bool | None) -> str:
+        return "follows the service" if value is None else ("on" if value else "off")
+
+    areas = doc["corrections"]["exclude"]
+    lines = [
+        f"An edit of **{config['official_name']}** (`{config['official_id']}`) made in the sync service's "
+        f"track editor by {edit.get('created_by') or 'an administrator'}.",
+        "",
+        f"> {doc['note']}",
+        "",
+        f"- border drawn in, under a `{DRAWN_PREFIX}` source: {drawn_m} m",
+        f"- excluded areas: {len(areas)} — they keep {hidden_after} surveyed record"
+        f"{'' if hidden_after == 1 else 's'} out of the compiled geometry (was {hidden_before})",
+        f"- smoothing for this circuit: {smoothing(smooth_after)}"
+        + ("" if smooth_after == smooth_before else f" (was: {smoothing(smooth_before)})"),
+        "",
+        "Nothing is deleted. The bundle keeps every record anybody surveyed; `corrections/` says which of "
+        "them the map does not draw, and removing an area brings its records back.",
+        "",
+    ]
+    if areas:
+        lines += ["| area | sides | why |", "| --- | --- | --- |"]
+        lines += [f"| `{a['id']}` | {', '.join(a['sides'])}{' (drawn only)' if a['only_drawn'] else ''} "
+                  f"| {a['reason']} |" for a in areas]
+        lines.append("")
+    lines += [
+        f"## Gate — {'passed' if gate['pass'] else 'not passed'} (for the reviewer; an edit is never merged by a machine)",
+        "",
+        "| criterion | result | value | expected |",
+        "| --- | --- | --- | --- |",
+    ]
+    lines += [f"| {c['label']} | {'pass' if c['pass'] else 'FAIL'} | {c['value']} | {c['expected']} |"
+              for c in gate["criteria"]]
+    lines += ["", "## Checks", ""]
+    lines += [f"- {'✅' if ok else '❌'} {name}" for name, ok, _ in checks]
+    lines += ["", f"Edit `{edit['id']}`. What this would publish is on the service: Admin → Merge → **map**."]
+    return "\n".join(lines) + "\n"
+
+
+def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
+    edit_id, official_id = str(edit["id"]), str(edit["official_id"])
+    outcome = EditOutcome(edit_id, official_id)
+
+    def finish(action: str, status: str, reason: str, pr_url: str = "") -> EditOutcome:
+        outcome.action, outcome.reason, outcome.pr_url = action, reason, pr_url or outcome.pr_url
+        ctx.log(f"  edit {edit_id}: {status}" + (f" — {reason}" if reason else ""))
+        if ctx.report and not ctx.dry_run:
+            ctx.service.report_edit(edit_id, status, reason, outcome.pr_url)
+        return outcome
+
+    config = ctx.configs.get(official_id)
+    if config is None:
+        return finish("failed", "failed", "this layout id is not in catalog/tracks.json")
+    outcome.name = config["official_name"]
+    slug = slugify(config["official_name"])
+    branch = EDIT_BRANCH_PREFIX + slug
+    outcome.pr_url = str(edit.get("pr_url") or "")
+    ctx.log(f"{official_id}  {config['official_name']}: edit {edit_id} ({edit.get('status', 'pending')})")
+
+    # From main, always: what the edit is measured against is what is published.
+    if ctx.git is not None and not ctx.dry_run:
+        ctx.git.prepare_branch(branch)
+    existing, existing_text = ctx.repo.read_bundle(slug)
+    if existing is None:
+        return finish("failed", "failed", "no survey of this circuit is in the track data, so there is nothing to edit")
+    current, current_text = ctx.repo.read_corrections(slug)
+
+    try:
+        doc = validate_edit(ctx.service.fetch_edit(edit_id), official_id)
+    except (ValueError, KeyError, TypeError, ServiceError) as exc:
+        return finish("failed", "failed", f"the edit could not be applied: {exc}")
+
+    merged = merge_into(existing, doc["drawn"]) if doc["drawn"] else existing
+    merged_text = canonical.dumps(merged)
+    wanted = doc["corrections"]
+    wanted_text = "" if corrections_format.is_empty(wanted) else corrections_format.dumps(wanted)
+
+    quorum = int((ctx.policy.get("policy") or {}).get("manual_quorum", 2))
+    decisions = _decisions_by_cell(ctx.service.kind_decisions(official_id)) if ctx.report else {}
+
+    if merged_text == existing_text and wanted_text == current_text:
+        # Main already holds all of it: its pull request was merged, or it
+        # asked for nothing. Either way the map should now say so.
+        pr_url = (ctx.forge.merged_pr_url(branch) if ctx.forge and not ctx.dry_run else "") or outcome.pr_url
+        outcome.pr_url = pr_url
+        if ctx.report and not ctx.dry_run:
+            kinds = policy_kinds(existing, ctx.accounts, quorum, decisions)["kinds"]
+            compiled = compile_geometry(compile_input(existing, kinds, current),
+                                        smoothing_for(ctx.policy, current))
+            stored = ctx.service.put_compiled(official_id, with_authored(compiled, existing))
+            ctx.service.publish(official_id, publication_facts(
+                config, existing, compiled, ctx.accounts, stored["r2_key"], pr_url, "auto_merged"))
+        return finish("applied", "applied", "in the track data and published", pr_url)
+
+    if edit.get("status") == "pr_open":
+        # Not in main, and already a pull request: it is somebody's to merge or
+        # close, and asking again every night would reopen what they closed.
+        still_open = ctx.forge.open_pr_url(branch) if ctx.forge and not ctx.dry_run else outcome.pr_url
+        if still_open:
+            outcome.action = "waiting"
+            ctx.log(f"  edit {edit_id}: waiting on {still_open}")
+            return outcome
+        return finish("closed", "closed", "its pull request was closed without being merged")
+
+    if doc["base"] != text_digest(current_text):
+        return finish("stale", "stale", "the circuit's corrections changed after this edit was started; "
+                                        "open the editor again and redo it on what is there now")
+
+    kinds_before = policy_kinds(existing, ctx.accounts, quorum, decisions)["kinds"]
+    kinds_after = policy_kinds(merged, ctx.accounts, quorum, decisions)["kinds"]
+    compiled_before = compile_geometry(compile_input(existing, kinds_before, current),
+                                       smoothing_for(ctx.policy, current))
+    compiled_after = compile_geometry(compile_input(merged, kinds_after, wanted),
+                                      smoothing_for(ctx.policy, wanted))
+    layout = identify_layout(merged, compiled_after, ctx.signatures)
+    accepted = ctx.service.layout_decisions(official_id) if ctx.report else []
+    changes = kind_changes(existing, merged, ctx.accounts, quorum)
+    gate = evaluate_gate({
+        "published": True,
+        "crossings": merged.get("finish_crossings", []),
+        "contributor_official_id": layout["contributor_official_id"],
+        "signature_official_id": layout["signature_official_id"],
+        "layout_accepted_at": str(accepted[-1].get("decided_at", "")) if accepted else "",
+        "coverage": gate_coverage(compiled_after),
+        "previous_coverage": gate_coverage(compiled_before),
+        "kind_changes": changes,
+    }, ctx.policy.get("gate") or {})
+    ctx.log(f"  gate {'passed' if gate['pass'] else 'failed: ' + ', '.join(gate['failed'])} (for the reviewer)")
+
+    drawn_m = new_metres(existing, merged)
+    hidden_before = len(corrections_format.excluded(existing["edges"], current))
+    hidden_after = len(corrections_format.excluded(merged["edges"], wanted))
+
+    if ctx.dry_run or ctx.git is None:
+        if ctx.git is None and not ctx.dry_run:
+            ctx.repo.write_bundle(slug, merged)
+            ctx.repo.write_corrections(slug, wanted)
+            ctx.log(f"  wrote tracks/{slug}.json and {corrections_format.DIRECTORY}/{slug}.json (no git)")
+        outcome.action = "pull_request"
+        return outcome
+
+    ctx.repo.write_bundle(slug, merged)
+    ctx.repo.write_corrections(slug, wanted)
+    checks = ctx.repo.rebuild_derived() + ctx.repo.checks()
+    clean = all(ok for _, ok, _ in checks)
+    for name, ok, output in checks:
+        if not ok:
+            ctx.log(f"  {name}: FAIL\n{output}")
+    ctx.git.commit_all(
+        [f"tracks/{slug}.json", f"{corrections_format.DIRECTORY}/{slug}.json", "index.json", "signatures.json"],
+        f"Edit {config['official_name']} from the sync service's track editor\n\n{doc['note']}\n\n"
+        f"Opened by {WORKFLOW} for edit {edit_id}.")
+    ctx.git.push_force(branch)
+
+    assert ctx.forge is not None
+    title = f"Edit {config['official_name']}: {doc['note'][:60]}{'…' if len(doc['note']) > 60 else ''} (editor)"
+    pr_url = ctx.forge.upsert(branch, title, edit_body(
+        config, edit, doc, drawn_m, hidden_before, hidden_after,
+        corrections_format.smooth_override(current), corrections_format.smooth_override(wanted),
+        gate, checks), draft=not clean)
+    outcome.pr_url = pr_url
+    ctx.log(f"  pull request: {pr_url}" + ("" if clean else " (a check failed; left as a draft)"))
+
+    if ctx.report:
+        ctx.service.report_merge_request(
+            official_id=official_id, pr_url=pr_url, branch=branch, accounts=0, new_metres=drawn_m,
+            kind_changes=len(changes), gate=gate, status="awaiting_review" if clean else "ci_failed")
+        send_candidate(ctx, official_id, compiled_after, merged, pr_url)
+    return finish("pull_request", "pr_open", "" if clean else "a repository check failed; the pull request is a draft", pr_url)
+
+
 # ── the run ────────────────────────────────────────────────────────────────
 
 
@@ -1281,6 +1620,17 @@ def run(ctx: Context, official_id: str = "") -> tuple[bool, list[Outcome]]:
             ctx.log(f"{track}: failed: {exc}")
             outcomes.append(Outcome(track, track, "", "nothing", [u["id"] for u in pending], reason=str(exc)))
 
+    # Edits after uploads: both start from main, on branches of their own, and
+    # an edit is measured against whatever the night's merges left there.
+    edits: list[EditOutcome] = []
+    for edit in ctx.service.open_edits(official_id):
+        try:
+            edits.append(process_edit(ctx, edit))
+        except Exception as exc:  # noqa: BLE001 - one edit must not take the night down
+            ok = False
+            ctx.log(f"  edit {edit.get('id')}: failed: {exc}")
+            edits.append(EditOutcome(str(edit.get("id")), str(edit.get("official_id")), action="failed", reason=str(exc)))
+
     counters = {
         "tracks_touched": len(groups),
         "prs_opened": sum(1 for o in outcomes if o.pr_url and o.action in ("pull_request", "merged")),
@@ -1293,8 +1643,11 @@ def run(ctx: Context, official_id: str = "") -> tuple[bool, list[Outcome]]:
             "scope": official_id or "all",
             "tracks": [{"official_id": o.official_id, "action": o.action, "pr_url": o.pr_url,
                         "uploads": o.uploads, "reason": o.reason} for o in outcomes],
+            "edits": [{"id": e.id, "official_id": e.official_id, "action": e.action, "pr_url": e.pr_url,
+                       "reason": e.reason} for e in edits],
         })
-    ctx.log(", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counters.items()))
+    ctx.log(", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counters.items())
+            + (f", edits {len(edits)}" if edits else ""))
     return ok, outcomes
 
 
@@ -1318,7 +1671,9 @@ def publish_existing(ctx: Context) -> int:
         official_id = config["official_id"]
         decisions = _decisions_by_cell(ctx.service.kind_decisions(official_id)) if ctx.report else {}
         kinds = policy_kinds(existing, ctx.accounts, quorum, decisions)["kinds"]
-        compiled = compile_geometry(publishable_copy(existing, kinds), smooth_borders(ctx.policy))
+        corrected, _ = ctx.repo.read_corrections(slug)
+        compiled = compile_geometry(compile_input(existing, kinds, corrected),
+                                    smoothing_for(ctx.policy, corrected))
         cov = compiled.get("coverage") or {}
         summary = (f"left {float((cov.get('L') or {}).get('pct', 0)):.1f}%, "
                    f"right {float((cov.get('R') or {}).get('pct', 0)):.1f}%")

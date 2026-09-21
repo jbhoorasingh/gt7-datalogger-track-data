@@ -36,6 +36,8 @@ jobs:
       - name: signatures.json must match the bundles and the vendored captures
         run: python tools/build_signatures.py --check
 
+      - name: Test the corrections format
+        run: python tools/test_corrections.py
       - name: Test the signature build
         run: python tools/test_build_signatures.py
 

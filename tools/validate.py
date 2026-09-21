@@ -15,6 +15,10 @@ not:
 3. **A filename matching the configuration**, so a contributor and a reviewer
    are looking at the same track without opening the file.
 
+`corrections/` is checked the same way — the format (`corrections.validate`),
+the catalog, the filename, canonical form — and for one thing more: a
+corrections file is about a bundle, so a bundle of that name has to exist.
+
     python tools/validate.py [--fix]
 """
 
@@ -27,12 +31,49 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import canonical  # noqa: E402
+import corrections  # noqa: E402
 from build_index import configurations, slugify  # noqa: E402
 from bundle_format import validate_document  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACKS = ROOT / "tracks"
+CORRECTIONS = ROOT / corrections.DIRECTORY
 CATALOG = ROOT / "catalog" / "tracks.json"
+
+
+def check_corrections(by_id: dict, fix: bool) -> list[str]:
+    """Every file in corrections/, held to what a bundle is held to."""
+    failures: list[str] = []
+    for path in sorted(CORRECTIONS.glob("*.json")) if CORRECTIONS.is_dir() else []:
+        raw = path.read_text(encoding="utf-8")
+        try:
+            doc = corrections.validate(json.loads(raw))
+        except ValueError as exc:
+            failures.append(f"{corrections.DIRECTORY}/{path.name}: {exc}")
+            continue
+        config = by_id.get(doc["official_id"])
+        if config is None:
+            failures.append(f"{corrections.DIRECTORY}/{path.name}: official_id "
+                            f"{doc['official_id']!r} is not in the catalog")
+            continue
+        want = slugify(config["official_name"]) + ".json"
+        if path.name != want:
+            failures.append(f"{corrections.DIRECTORY}/{path.name}: should be named {want}")
+        if not (TRACKS / want).exists():
+            failures.append(f"{corrections.DIRECTORY}/{path.name}: corrects tracks/{want}, "
+                            "which is not here")
+        expected = corrections.dumps(doc)
+        if raw != expected:
+            if fix:
+                path.write_text(expected, encoding="utf-8")
+                print(f"{corrections.DIRECTORY}/{path.name}: rewritten in canonical form")
+            else:
+                failures.append(f"{corrections.DIRECTORY}/{path.name}: not in canonical form — "
+                                "run: python tools/validate.py --fix")
+        smooth = corrections.smooth_override(doc)
+        print(f"{corrections.DIRECTORY}/{path.name}: ok — {len(doc['exclude'])} excluded area(s)"
+              + ("" if smooth is None else f", smoothing {'on' if smooth else 'off'}"))
+    return failures
 
 
 def main(argv: list[str]) -> int:
@@ -81,6 +122,8 @@ def main(argv: list[str]) -> int:
               f"{doc['meta']['runs']} run(s) from "
               f"{len(doc['meta']['source_runs'])} source(s), "
               f"{len(doc['corners'])} corner(s)")
+
+    failures += check_corrections(by_id, fix)
 
     if failures:
         print("\nFAILED:", file=sys.stderr)
