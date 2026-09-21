@@ -300,6 +300,19 @@ can be run on its own, switch or no switch, and
 answer: both test suites read it, and a change to one routine is a change to
 both.
 
+### Pull requests somebody else settled
+
+The sync service is told what became of a pull request by this job and by
+nobody else, so a person pressing **Merge** or **Close** on GitHub leaves it
+believing the pull request is still waiting — and offering its administrator a
+map for one that no longer exists. The last thing a run does is put that
+right: it asks the service which pull requests it thinks are waiting, asks
+GitHub about each by its address (`gh pr view`), and settles the ones that are
+`MERGED` or `CLOSED`. Anything else — still open, or GitHub could not be asked
+— is left exactly as it is: a row wrongly closed would hide a pull request
+somebody still has to decide about. A run for one circuit reconciles that
+circuit; a dry run reconciles nothing; a failure here never fails the night.
+
 ### Corrections, and why nothing is ever deleted
 
 A bundle is evidence, and evidence only adds up: a merge is a union per metre

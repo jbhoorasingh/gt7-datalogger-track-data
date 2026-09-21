@@ -252,6 +252,21 @@ class Service:
     def publish(self, official_id: str, facts: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/v1/tracks/{official_id}/published", body=facts)
 
+    def waiting_merge_requests(self, official_id: str = "") -> list[dict[str, Any]]:
+        """The pull requests the service still believes are waiting. One from
+        before it could be asked has no such route, and nothing to say."""
+        try:
+            reply = self._request("GET", "/v1/merge-requests", params={"official_id": official_id})
+        except ServiceError as exc:
+            if exc.status in (404, 405):
+                return []
+            raise
+        return list(reply.get("merge_requests", []))
+
+    def settle_merge_request(self, merge_request_id: str, status: str, pr_state: str) -> dict[str, Any]:
+        return self._request("POST", f"/v1/merge-requests/{merge_request_id}/status",
+                             body={"status": status, "pr_state": pr_state})
+
     def open_edits(self, official_id: str = "") -> list[dict[str, Any]]:
         """Edits an administrator made that are not finished with: waiting to
         become a pull request, or waiting for theirs to be merged. A service
@@ -892,6 +907,12 @@ class Forge:
     def merged_pr_url(self, branch: str) -> str:
         return self.gh("pr", "list", "--head", branch, "--state", "merged", "--json", "url",
                        "--jq", ".[0].url // empty", check=False)
+
+    def pr_state(self, pr_url: str) -> str:
+        """OPEN, MERGED or CLOSED, as GitHub has it — or nothing, when it could
+        not be asked. By address and not by branch: `sync/<slug>` is the same
+        branch every night, and last month's pull request had it too."""
+        return self.gh("pr", "view", pr_url, "--json", "state", "--jq", ".state", check=False).strip().upper()
 
     def upsert(self, branch: str, title: str, body: str, draft: bool) -> str:
         body_file = self.root / ".git" / f"sync-{branch.replace('/', '-')}.md"
@@ -1589,6 +1610,56 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
     return finish("pull_request", "pr_open", "" if clean else "a repository check failed; the pull request is a draft", pr_url)
 
 
+# ── pull requests somebody settled on GitHub ───────────────────────────────
+#
+# The service learns what became of a pull request from this job and from
+# nowhere else: it is told when one is opened or merged here, and publishing a
+# circuit closes the row its pull request came from. A person pressing Merge or
+# Close on GitHub tells nobody. The row goes on reading "awaiting review", and
+# the admin panel offers a map for a pull request that no longer exists — how
+# Barcelona came to have a button that could only answer 404: its pull request
+# was closed by hand, its survey had reached main another way, and with nothing
+# pending the job never went near the circuit again.
+#
+# So each run asks the service which pull requests it still believes are
+# waiting, and asks GitHub about each. It is this job that asks because the
+# split is this job's to keep: the service never talks to GitHub about pull
+# requests, and one source of that truth is enough.
+
+# What GitHub calls it, and the service's word for it. "auto_merged" is that
+# table's spelling of "it landed"; who landed it goes in its audit row.
+SETTLED_AS = {"MERGED": "auto_merged", "CLOSED": "closed"}
+
+
+def reconcile_merge_requests(ctx: Context, official_id: str = "") -> list[dict[str, str]]:
+    """Settle every waiting merge request whose pull request is no longer open."""
+    if ctx.dry_run or not ctx.report or ctx.forge is None:
+        return []
+    settled: list[dict[str, str]] = []
+    for row in ctx.service.waiting_merge_requests(official_id):
+        merge_request_id, pr_url = str(row.get("id", "")), str(row.get("pr_url", ""))
+        if not merge_request_id or not pr_url:
+            continue
+        try:
+            state = ctx.forge.pr_state(pr_url)
+            status = SETTLED_AS.get(state)
+            if status is None:
+                # Open, or GitHub could not be asked. Never settled on a
+                # guess: a row wrongly closed hides a pull request somebody
+                # still has to decide about, which is worse than a stale one.
+                if state != "OPEN":
+                    ctx.log(f"  {pr_url}: could not tell whether it is still open; left as it is")
+                continue
+            ctx.service.settle_merge_request(merge_request_id, status, state)
+        except Exception as exc:  # noqa: BLE001 - one pull request must not take the night down
+            ctx.log(f"  {pr_url}: could not be settled: {exc}")
+            continue
+        ctx.log(f"  {pr_url}: {state.lower()} on GitHub; the service was still waiting on it → {status}")
+        settled.append({"id": merge_request_id, "official_id": str(row.get("official_id", "")),
+                        "pr_url": pr_url, "status": status})
+    return settled
+
+
 # ── the run ────────────────────────────────────────────────────────────────
 
 
@@ -1631,6 +1702,14 @@ def run(ctx: Context, official_id: str = "") -> tuple[bool, list[Outcome]]:
             ctx.log(f"  edit {edit.get('id')}: failed: {exc}")
             edits.append(EditOutcome(str(edit.get("id")), str(edit.get("official_id")), action="failed", reason=str(exc)))
 
+    # Last, so that whatever this run merged, published or closed has already
+    # settled its own row and only what nobody told the service about is left.
+    settled: list[dict[str, str]] = []
+    try:
+        settled = reconcile_merge_requests(ctx, official_id)
+    except Exception as exc:  # noqa: BLE001 - housekeeping must not fail a night that merged
+        ctx.log(f"merge requests could not be reconciled: {exc}")
+
     counters = {
         "tracks_touched": len(groups),
         "prs_opened": sum(1 for o in outcomes if o.pr_url and o.action in ("pull_request", "merged")),
@@ -1645,9 +1724,11 @@ def run(ctx: Context, official_id: str = "") -> tuple[bool, list[Outcome]]:
                         "uploads": o.uploads, "reason": o.reason} for o in outcomes],
             "edits": [{"id": e.id, "official_id": e.official_id, "action": e.action, "pr_url": e.pr_url,
                        "reason": e.reason} for e in edits],
+            "settled": settled,
         })
     ctx.log(", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counters.items())
-            + (f", edits {len(edits)}" if edits else ""))
+            + (f", edits {len(edits)}" if edits else "")
+            + (f", merge requests settled {len(settled)}" if settled else ""))
     return ok, outcomes
 
 
