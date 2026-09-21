@@ -217,6 +217,63 @@ class PolicyOnDocumentsTests(unittest.TestCase):
 # ── the gate ────────────────────────────────────────────────────────────────
 
 
+class SmoothingSwitchTests(unittest.TestCase):
+    """`compile.smooth_borders`, as the service serves it and as the job reads it."""
+
+    def test_the_administrators_answer_is_read_from_the_policy(self) -> None:
+        self.assertIs(sync_job.smooth_borders({"compile": {"smooth_borders": False}}), False)
+        self.assertIs(sync_job.smooth_borders({"compile": {"smooth_borders": True}}), True)
+
+    def test_a_service_from_before_the_switch_said_nothing(self) -> None:
+        # None, not True: the compiler's default applies, and the job does not
+        # put words in the administrator's mouth.
+        self.assertIsNone(sync_job.smooth_borders({"policy": {"manual_quorum": 2}}))
+        self.assertIsNone(sync_job.smooth_borders({"compile": None}))
+
+    def test_only_a_boolean_is_an_answer(self) -> None:
+        # "off" is truthy. A job that took it for yes would go on smoothing a
+        # map whose owner had said not to.
+        for value in ("off", "false", 0, 1, None, []):
+            self.assertIsNone(sync_job.smooth_borders({"compile": {"smooth_borders": value}}), value)
+
+    @unittest.skipUnless(HAVE_COMPILER, "needs the datalogger's compiler (app.processing.track_compile)")
+    def test_the_compiler_is_told_and_the_document_says_what_it_got(self) -> None:
+        if not sync_job.compiler_takes_smooth():
+            self.skipTest("the installed compiler is from before it could smooth")
+        doc = load_survey()
+        off = sync_job.compile_geometry(doc, False)
+        on = sync_job.compile_geometry(doc, True)
+        self.assertIsNone(off["smoothing"])
+        self.assertEqual(on["smoothing"]["method"], "taubin")
+        # Off is the evidence as recorded: every drawn vertex is a record.
+        recorded = {(round(e["x"], 2), round(e["z"], 2)) for e in doc["edges"]}
+        drawn = [(v[0], v[1]) for side in ("L", "R") for run in off["borders"][side] for v in run]
+        self.assertTrue(drawn and all(v in recorded for v in drawn))
+        # On moves them, a little, and never invents or loses a gap.
+        self.assertNotEqual(on["borders"], off["borders"])
+        self.assertEqual(on["gaps"], off["gaps"])
+
+    def test_an_older_compiler_is_called_as_it_always_was(self) -> None:
+        calls: list[tuple[Any, ...]] = []
+
+        class Old:
+            @staticmethod
+            def compile_bundle(doc: dict[str, Any]) -> dict[str, Any]:
+                calls.append((doc,))
+                return {"format": "gt7-datalogger-track-compiled"}
+
+        original = sync_job._compiler
+        sync_job._compiler = lambda: Old
+        try:
+            self.assertFalse(sync_job.compiler_takes_smooth())
+            # Not a TypeError for a keyword it never had.
+            self.assertEqual(sync_job.compile_geometry({"edges": []}, False)["format"],
+                             "gt7-datalogger-track-compiled")
+        finally:
+            sync_job._compiler = original
+        self.assertEqual(len(calls), 1)
+
+
 class AuthoredWorkTests(unittest.TestCase):
     def test_corners_and_sections_ride_along_with_the_geometry(self) -> None:
         compiled = {"format": "gt7-datalogger-track-compiled", "borders": {"L": [], "R": []}}
@@ -552,6 +609,27 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(facts["track_name"], "Deep Forest Raceway")
         self.assertEqual(facts["contributors"], 3)  # two unbound sources in the survey, plus Bob
         self.assertEqual(service.runs[-1]["auto_merged"], 1)
+
+    def test_the_smoothing_switch_reaches_the_geometry_the_service_is_sent(self) -> None:
+        if not sync_job.compiler_takes_smooth():
+            self.skipTest("the installed compiler is from before it could smooth")
+        stored: dict[bool, dict[str, Any]] = {}
+        for wanted in (True, False):
+            self.setUp()
+            upload = survey_subset(self.existing, "feedbeef")
+            service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+            service._policy["gate"]["auto_merge"] = True
+            service._policy["compile"] = {"smooth_borders": wanted}
+            ok, outcomes = run(self.context(service, FakeForge(merges=True)))
+            self.assertTrue(ok, self.log.getvalue())
+            # Whichever way it is set, the gate compares a before and an after
+            # compiled the same way, so coverage holds either way.
+            self.assertEqual(outcomes[0].action, "merged", self.log.getvalue())
+            stored[wanted] = service.compiled[DEEP_FOREST]
+            self.tearDown()
+        self.assertIsNone(stored[False]["smoothing"])
+        self.assertEqual(stored[True]["smoothing"]["cap_m"], 0.75)
+        self.assertNotEqual(stored[True]["borders"], stored[False]["borders"])
 
     def test_an_upload_already_on_main_is_reported_merged_and_published(self) -> None:
         already = copy.deepcopy(self.existing)

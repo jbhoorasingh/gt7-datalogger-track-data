@@ -872,3 +872,99 @@ export function pathLength(path) {
   }
   return total;
 }
+
+// ---------------------------------------------------------------------------
+// Smoothing a run of border, the way the compiler does — and apart from it
+// ---------------------------------------------------------------------------
+//
+// The datalogger's compiler smooths every surveyed run before it draws one
+// (`track_compile.smooth_run`), and the sync service's administrator can
+// switch that off for the shared map. This is the same routine, here so the
+// editor can run it on its own: on a stretch somebody has selected, whatever
+// the switch says, and to show what the compiler would make of a border
+// before anything is compiled.
+//
+// It is Taubin's λ|μ pass and not an average, for a measured reason. An
+// average pulls every curve towards its inside — a ±8 m window cuts 2.0 m off
+// a 3 m kerb and 1.4 m off a 10 m hairpin — and this does not: each pass
+// smooths by λ, which shrinks, then by μ < -λ, which undoes the shrinking.
+//
+// The figures are the compiler's and must stay the compiler's.
+// `smooth-vectors.json` beside this file is generated over there
+// (`backend/tests/data/make_smooth_vectors.py` in gt7-datalogger) and both
+// test suites read it; a change to one routine is a change to both.
+
+export const SMOOTH_ITERATIONS = 10;
+export const SMOOTH_LAMBDA = 0.5;
+export const SMOOTH_MU = -0.53;
+/** No point ends further than this from where it was recorded. Under the 1 m
+ *  grid and under the metre of margin laps are judged with. */
+export const SMOOTH_CAP_M = 0.75;
+const SMOOTH_MIN_SPACING_M = 1e-3;
+
+/**
+ * One ORDERED run of positions, smoothed without shrinking it.
+ *
+ * An open run keeps both ends exactly where they were: an end is where the
+ * survey stopped, and what lies beyond is not this run's to guess at. `closed`
+ * is a loop with no ends, smoothed round its seam. Each neighbour is weighted
+ * by the inverse of its original distance, which on a straight line is the
+ * point's own position however unevenly the records are spaced, so records do
+ * not creep along the border and spend the cap on moving nothing.
+ *
+ * The caller decides what a run is, and must never hand over positions from
+ * two sides of unsurveyed ground: smoothing drags both ends of a gap into it.
+ */
+export function smoothRun(path, {
+  closed = false,
+  iterations = SMOOTH_ITERATIONS,
+  lambda = SMOOTH_LAMBDA,
+  mu = SMOOTH_MU,
+  cap = SMOOTH_CAP_M,
+} = {}) {
+  const n = path.length;
+  const orig = path.map((point) => ({ x: Number(point.x), z: Number(point.z) }));
+  if (n < 3 || iterations <= 0) return orig;
+
+  const spacing = (a, b) => Math.max(
+    Math.hypot(orig[b].x - orig[a].x, orig[b].z - orig[a].z),
+    SMOOTH_MIN_SPACING_M,
+  );
+  // Which points move, their neighbours, and each neighbour's weight: from
+  // the positions as recorded, and fixed for every pass.
+  const moving = [];
+  for (let i = closed ? 0 : 1; i < (closed ? n : n - 1); i += 1) {
+    const a = (i - 1 + n) % n;
+    const b = (i + 1) % n;
+    moving.push({ i, a, b, wa: 1 / spacing(a, i), wb: 1 / spacing(i, b) });
+  }
+
+  let cur = orig.map((point) => ({ ...point }));
+  for (let pass = 0; pass < iterations; pass += 1) {
+    for (const factor of [lambda, mu]) {
+      const next = cur.map((point) => ({ ...point }));
+      for (const { i, a, b, wa, wb } of moving) {
+        const tx = (cur[a].x * wa + cur[b].x * wb) / (wa + wb);
+        const tz = (cur[a].z * wa + cur[b].z * wb) / (wa + wb);
+        next[i] = {
+          x: cur[i].x + factor * (tx - cur[i].x),
+          z: cur[i].z + factor * (tz - cur[i].z),
+        };
+      }
+      cur = next;
+    }
+  }
+
+  if (cap >= 0) {
+    for (const { i } of moving) {
+      const dx = cur[i].x - orig[i].x;
+      const dz = cur[i].z - orig[i].z;
+      const moved = Math.hypot(dx, dz);
+      if (moved > cap) {
+        const scale = cap / moved;
+        cur[i] = { x: orig[i].x + dx * scale, z: orig[i].z + dz * scale };
+      }
+    }
+  }
+  return cur;
+}
