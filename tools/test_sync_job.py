@@ -955,6 +955,36 @@ class ReconciliationTests(unittest.TestCase):
         self.assertTrue(any("could not be reconciled" in line for line in self.log))
 
 
+# ── what starts the job ────────────────────────────────────────────────────
+
+
+class WorkflowTests(unittest.TestCase):
+    """sync.yml is configuration, and two lines of it are load-bearing."""
+
+    def setUp(self) -> None:
+        self.text = (ROOT / ".github" / "workflows" / "sync.yml").read_text(encoding="utf-8")
+
+    def test_it_runs_when_a_person_closes_one_of_its_pull_requests(self) -> None:
+        # Nothing else tells the service that somebody pressed Merge, and the
+        # other open pull requests have just gone stale in index.json.
+        self.assertRegex(self.text, r"pull_request:\n\s+types: \[closed\]")
+
+    def test_only_for_its_own_branches_and_never_for_a_fork(self) -> None:
+        guard = " ".join(self.text.split("    if: >-")[1].split("runs-on:")[0].split())
+        self.assertIn("startsWith(github.head_ref, 'sync/')", guard)
+        self.assertIn("startsWith(github.head_ref, 'edit/')", guard)
+        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", guard)
+        # A branch name is somebody else's text. It is compared, never run:
+        # nothing in a `run:` step may interpolate it.
+        for block in self.text.split("run: |")[1:]:
+            self.assertNotIn("head_ref", block.split("\n      - ")[0])
+
+    def test_it_works_from_main_whatever_started_it(self) -> None:
+        # A conflicted pull request has no test merge to check out, and that
+        # is the very one a run on close is there to mend.
+        self.assertIn("github.event_name == 'pull_request' && github.event.repository.default_branch", self.text)
+
+
 # ── an administrator's edit ────────────────────────────────────────────────
 
 DRAWN = "drawn-0a1b2c3d"
@@ -1160,14 +1190,77 @@ class EditEndToEndTests(unittest.TestCase):
         self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "closed"))
         self.assertEqual(len(forge.upserts), 1)  # and it is not reopened every night
 
-    def test_a_waiting_pull_request_is_left_alone(self) -> None:
+    def branch_head(self, branch: str) -> str:
+        return subprocess.run(["git", "rev-parse", f"refs/heads/{branch}"], cwd=self.origin,
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_a_waiting_pull_request_is_left_alone_while_main_stands_still(self) -> None:
         x, z = self.right_border_spot()
         service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
         forge = FakeForge()
         run(self.context(service, forge))
+        pushed = self.branch_head("edit/deep-forest-raceway")
         run(self.context(service, forge))
+        # A quiet night leaves a pull request quiet: no push, no edit to it,
+        # nothing said to the service that it has not been told.
+        self.assertEqual(self.branch_head("edit/deep-forest-raceway"), pushed)
         self.assertEqual(len(forge.upserts), 1)
         self.assertEqual([r[1] for r in service.edit_reports], ["pr_open"])
+        self.assertIn("up to date with main", self.log.getvalue())
+
+    def test_a_waiting_pull_request_is_rebuilt_when_something_else_lands(self) -> None:
+        # Production, 2026-09-21. Three edits open at once; two were merged, and
+        # the third then conflicted in index.json and stayed that way, because
+        # an open edit was left alone. The line was the grand total at the top
+        # — `"points": 128012` — which every pull request that adds a record
+        # rewrites, so any two of them collide the moment one lands. A survey's
+        # pull request is rebuilt from main every night. So is an edit's, now.
+        x, z = self.right_border_spot()
+        drawn = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(8)])
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway",
+                                                  areas=[square(x, z)], drawn=drawn))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        branch = "edit/deep-forest-raceway"
+        before = self.branch_head(branch)
+
+        # Somebody else's pull request lands, and it added records too: the
+        # same total, on the same line, to a different number.
+        git = lambda *a: subprocess.run(["git", *a], cwd=self.repo, check=True, capture_output=True, text=True)  # noqa: E731
+        git("checkout", "-q", "main")
+        path = self.repo / "index.json"
+        text = path.read_text(encoding="utf-8")
+        total = json.loads(text)["counts"]["points"]
+        # The grand total is the first of them: this repository has one
+        # circuit, so that circuit's own count is the same number further down.
+        self.assertTrue(text.index(f'"points": {total},') < text.index('"unmatched_bundles"'))
+        path.write_text(text.replace(f'"points": {total},', f'"points": {total + 153},', 1), encoding="utf-8")
+        git("commit", "-q", "-am", "another circuit's edit lands")
+        git("push", "-q", "origin", "main")
+        git("fetch", "-q", "origin")
+        collision = subprocess.run(["git", "merge-tree", "--write-tree", "--name-only", "origin/main", f"origin/{branch}"],
+                                   cwd=self.repo, capture_output=True, text=True)
+        self.assertNotEqual(collision.returncode, 0, "the fixture should reproduce the conflict")
+        self.assertIn("index.json", collision.stdout)
+
+        ok, _ = run(self.context(service, forge))
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertIn("rebuilt on today's main", self.log.getvalue())
+        self.assertNotEqual(self.branch_head(branch), before)
+        # It is the same pull request, edited — not a second one — and it merges.
+        self.assertEqual([u[0] for u in forge.upserts], [branch, branch])
+        self.assertEqual(len(set(forge.open.values())), 1)
+        git("fetch", "-q", "origin")
+        merged = subprocess.run(["git", "merge-tree", "--write-tree", "origin/main", f"origin/{branch}"],
+                                cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(merged.returncode, 0, merged.stdout)
+        self.assertEqual(subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", f"origin/{branch}"],
+                                        cwd=self.repo).returncode, 0)
+        # Still the edit it was, and still somebody's to merge.
+        pushed = json.loads(self.origin_has(branch, "corrections/deep-forest-raceway.json"))
+        self.assertEqual(pushed["exclude"][0]["id"], "a1")
+        self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "pr_open"))
+        self.assertEqual(forge.merged, [])
 
     def test_an_edit_started_from_other_corrections_is_stale(self) -> None:
         x, z = self.right_border_spot()

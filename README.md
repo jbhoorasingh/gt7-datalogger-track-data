@@ -240,6 +240,18 @@ merges it itself and asks the pack and the site to republish, exactly as the
 vendor refresh does. Otherwise the pull request waits for a person, and the
 service's admin panel shows why, criterion by criterion.
 
+It also runs whenever a **person** merges or closes one of its own pull requests
+(`sync/…`, `edit/…`), and for everything, not just that circuit. Two reasons,
+and both were found the hard way. Nothing else tells the sync service that
+somebody pressed Merge, so left to the nightly run a circuit merged at lunchtime
+reads "awaiting review" until two in the morning with its edit unpublished. And
+every pull request here rewrites `index.json` — the grand total at the top is
+one line — so the moment one lands, every other open one conflicts. The run
+publishes what landed, settles its row, and rebuilds the rest on the new
+`main`. Only this repository's own branches start it, never a fork's, and a
+merge the job makes itself starts nothing (`GITHUB_TOKEN`'s events never do),
+which is also why it cannot loop.
+
 Two things it never turns into a pull request, because a pull request would
 be the wrong answer: a survey whose confirmed layout disagrees with what
 `signatures.json` identifies from the geometry (it would file a circuit under
@@ -346,6 +358,8 @@ edit reaches this repository the way a survey does, as a pull request the job
 opens (`edit/<slug>`): drawn records merged into the bundle under a `drawn-`
 source, the corrections file beside it, the gate's verdict in the body. The
 job never merges one — an edit is one person's opinion about the evidence —
+rebuilds it from `main` on every run while it waits (pushing only when that
+changes something, so a quiet night leaves it quiet)
 and sends what it would publish to the service, so whoever reviews it can look
 at it against what is published now. An edit may carry votes only under a
 `drawn-` source, and is refused otherwise: the editor draws, it does not
