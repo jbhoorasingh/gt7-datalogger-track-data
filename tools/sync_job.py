@@ -824,8 +824,7 @@ class Forge:
 # ── the compiler ───────────────────────────────────────────────────────────
 
 
-def compile_geometry(doc: dict[str, Any]) -> dict[str, Any]:
-    """The datalogger's own compiler, which this repository never re-implements."""
+def _compiler() -> Any:
     try:
         from app.processing import track_compile
     except ImportError:  # pragma: no cover - the message is the test
@@ -834,7 +833,43 @@ def compile_geometry(doc: dict[str, Any]) -> dict[str, Any]:
             '  pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger'
             '@main#subdirectory=backend"'
         ) from None
-    return track_compile.compile_bundle(doc)
+    return track_compile
+
+
+def smooth_borders(policy: dict[str, Any]) -> bool | None:
+    """What the administrator said about smoothing the published borders.
+
+    `compile.smooth_borders` in the service's settings, served with the rest
+    of the policy. None is a service from before the switch existed, which
+    said nothing — and then the compiler does whatever it does by default,
+    rather than this job inventing an answer on the administrator's behalf.
+    Only a real boolean counts: a switch that read "off" as true would go on
+    smoothing a map its owner had said not to.
+    """
+    value = (policy.get("compile") or {}).get("smooth_borders")
+    return value if isinstance(value, bool) else None
+
+
+def compiler_takes_smooth() -> bool:
+    """Whether the installed compiler can be told. One from before it learned
+    to smooth cannot, and does not smooth either."""
+    import inspect
+
+    return "smooth" in inspect.signature(_compiler().compile_bundle).parameters
+
+
+def compile_geometry(doc: dict[str, Any], smooth: bool | None = None) -> dict[str, Any]:
+    """The datalogger's own compiler, which this repository never re-implements.
+
+    `smooth` is the administrator's answer (see `smooth_borders`). Every
+    compile in a run gets the same one — a circuit's published geometry and
+    its candidate above all, because "coverage held" compares the two, and a
+    smoothed border is a fraction shorter than the same border as recorded.
+    """
+    compiler = _compiler()
+    if smooth is None or not compiler_takes_smooth():
+        return compiler.compile_bundle(doc)
+    return compiler.compile_bundle(doc, smooth=smooth)
 
 
 # ── one circuit ────────────────────────────────────────────────────────────
@@ -1029,7 +1064,7 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
         if ctx.report and not ctx.dry_run:
             kinds = policy_kinds(existing, accounts, quorum,
                                  _decisions_by_cell(ctx.service.kind_decisions(official_id)))["kinds"]
-            compiled = compile_geometry(publishable_copy(existing, kinds))
+            compiled = compile_geometry(publishable_copy(existing, kinds), smooth_borders(ctx.policy))
             stored = ctx.service.put_compiled(official_id, with_authored(compiled, existing))
             ctx.service.publish(official_id, publication_facts(
                 config, existing, compiled, accounts, stored["r2_key"], pr_url, "auto_merged"))
@@ -1039,8 +1074,10 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
     decisions = _decisions_by_cell(ctx.service.kind_decisions(official_id))
     after = policy_kinds(merged, accounts, quorum, decisions)
     before = policy_kinds(existing, accounts, quorum, decisions) if existing else None
-    compiled_after = compile_geometry(publishable_copy(merged, after["kinds"]))
-    compiled_before = compile_geometry(publishable_copy(existing, before["kinds"])) if existing and before else None
+    smooth = smooth_borders(ctx.policy)
+    compiled_after = compile_geometry(publishable_copy(merged, after["kinds"]), smooth)
+    compiled_before = (compile_geometry(publishable_copy(existing, before["kinds"]), smooth)
+                       if existing and before else None)
 
     # Which layout the geometry says this is, and whether a person already answered.
     layout = identify_layout(merged, compiled_after, ctx.signatures)
@@ -1244,7 +1281,7 @@ def publish_existing(ctx: Context) -> int:
         official_id = config["official_id"]
         decisions = _decisions_by_cell(ctx.service.kind_decisions(official_id)) if ctx.report else {}
         kinds = policy_kinds(existing, ctx.accounts, quorum, decisions)["kinds"]
-        compiled = compile_geometry(publishable_copy(existing, kinds))
+        compiled = compile_geometry(publishable_copy(existing, kinds), smooth_borders(ctx.policy))
         cov = compiled.get("coverage") or {}
         summary = (f"left {float((cov.get('L') or {}).get('pct', 0)):.1f}%, "
                    f"right {float((cov.get('R') or {}).get('pct', 0)):.1f}%")
@@ -1291,6 +1328,16 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         report=not args.no_report,
     )
+    # Said once, up front: which way the borders are being drawn is the first
+    # thing to know about a map that looks different from yesterday's.
+    wanted = smooth_borders(ctx.policy)
+    if wanted is None:
+        ctx.log("borders: the service said nothing about smoothing; the compiler's default applies")
+    elif not compiler_takes_smooth():
+        ctx.log(f"borders: the administrator set smoothing {'on' if wanted else 'off'}, but the installed "
+                "compiler is from before it could smooth and compiles the evidence as recorded")
+    else:
+        ctx.log(f"borders: smoothing {'on' if wanted else 'off'} (compile.smooth_borders)")
     if args.publish_existing:
         count = publish_existing(ctx)
         print(f"{count} circuit{'' if count == 1 else 's'} published")
