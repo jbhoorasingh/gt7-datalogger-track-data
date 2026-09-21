@@ -423,9 +423,24 @@ class FakeService:
         self.runs: list[dict[str, Any]] = []
         self.kind: list[dict[str, Any]] = []
         self.layout: list[dict[str, Any]] = []
+        self.waiting: list[dict[str, Any]] = []
+        self.settled: list[tuple[str, str, str]] = []
+        self.refuses_to_settle: set[str] = set()
+        self.asked_about: list[str] = []
         self.edits: list[dict[str, Any]] = []
         self.edit_docs: dict[str, dict[str, Any]] = {}
         self.edit_reports: list[tuple[str, str, str, str]] = []
+
+    def waiting_merge_requests(self, official_id: str = "") -> list[dict[str, Any]]:
+        self.asked_about.append(official_id)
+        return [dict(row) for row in self.waiting if not official_id or row["official_id"] == official_id]
+
+    def settle_merge_request(self, merge_request_id: str, status: str, pr_state: str) -> dict[str, Any]:
+        if merge_request_id in self.refuses_to_settle:
+            raise ServiceError(500, "internal", "a bad minute")
+        self.settled.append((merge_request_id, status, pr_state))
+        self.waiting = [row for row in self.waiting if row["id"] != merge_request_id]
+        return {"merge_request_id": merge_request_id, "status": status, "outcome": "updated"}
 
     def open_edits(self, official_id: str = "") -> list[dict[str, Any]]:
         return [dict(e) for e in self.edits
@@ -503,6 +518,12 @@ class FakeForge:
         self.workflows: list[str] = []
         self.already_merged: dict[str, str] = {}
         self.open: dict[str, str] = {}
+        self.states: dict[str, str] = {}
+        self.looked_at: list[str] = []
+
+    def pr_state(self, pr_url: str) -> str:
+        self.looked_at.append(pr_url)
+        return self.states.get(pr_url, "OPEN")
 
     def open_pr_url(self, branch: str) -> str:
         return self.open.get(branch, "")
@@ -812,6 +833,126 @@ class EndToEndTests(unittest.TestCase):
 
 
 # ── the wire, against a live service ────────────────────────────────────────
+
+
+# ── pull requests somebody settled on GitHub ───────────────────────────────
+
+BARCELONA = "aa8dc5"
+PR_83 = "https://github.com/example/track-data/pull/83"
+
+
+def waiting_row(row_id: str, pr_url: str, official_id: str = BARCELONA) -> dict[str, Any]:
+    return {"id": row_id, "official_id": official_id, "pr_url": pr_url, "branch": f"sync/{official_id}",
+            "status": "awaiting_review", "created_at": "2026-09-20T21:44:17Z", "updated_at": "2026-09-20T21:44:17Z"}
+
+
+class ReconciliationTests(unittest.TestCase):
+    """The service is told what became of a pull request by this job and by
+    nobody else, so this job has to notice the ones a person settled."""
+
+    def setUp(self) -> None:
+        self.log: list[str] = []
+        self.service = FakeService([], {})
+        self.forge = FakeForge()
+
+    def context(self, **overrides: Any) -> Context:
+        fields: dict[str, Any] = dict(service=self.service, repo=None, git=None, forge=self.forge, policy={},
+                                      accounts={}, configs={}, signatures={}, log=self.log.append)
+        fields.update(overrides)
+        return Context(**fields)
+
+    def test_a_pull_request_closed_by_hand_is_settled_as_closed(self) -> None:
+        # Production, 2026-09-21: Barcelona's pull request closed on GitHub,
+        # its survey already on main another way, nothing pending — and the
+        # admin panel still offering a map for it, which could only 404.
+        self.service.waiting = [waiting_row("mrq_bcn", PR_83)]
+        self.forge.states[PR_83] = "CLOSED"
+        settled = sync_job.reconcile_merge_requests(self.context())
+        self.assertEqual(self.service.settled, [("mrq_bcn", "closed", "CLOSED")])
+        self.assertEqual(settled, [{"id": "mrq_bcn", "official_id": BARCELONA, "pr_url": PR_83, "status": "closed"}])
+        self.assertIn("closed on GitHub", self.log[-1])
+
+    def test_one_a_person_merged_is_settled_as_landed(self) -> None:
+        self.service.waiting = [waiting_row("mrq_1", PR_83)]
+        self.forge.states[PR_83] = "MERGED"
+        sync_job.reconcile_merge_requests(self.context())
+        self.assertEqual(self.service.settled, [("mrq_1", "auto_merged", "MERGED")])
+
+    def test_one_still_open_is_left_alone(self) -> None:
+        self.service.waiting = [waiting_row("mrq_1", PR_83)]
+        self.assertEqual(sync_job.reconcile_merge_requests(self.context()), [])
+        self.assertEqual(self.service.settled, [])
+        self.assertEqual(self.forge.looked_at, [PR_83])
+
+    def test_it_is_never_settled_on_a_guess(self) -> None:
+        # GitHub could not be asked — a bad token, an outage, an address that
+        # is not a pull request. A row wrongly closed hides a pull request
+        # somebody still has to decide about; a stale one only wastes a click.
+        self.service.waiting = [waiting_row("mrq_1", PR_83), waiting_row("mrq_2", PR_83 + "0")]
+        self.forge.states[PR_83] = ""
+        self.forge.states[PR_83 + "0"] = "DRAFT"
+        self.assertEqual(sync_job.reconcile_merge_requests(self.context()), [])
+        self.assertEqual(self.service.settled, [])
+        self.assertEqual(sum("could not tell" in line for line in self.log), 2)
+
+    def test_one_that_cannot_be_settled_does_not_stop_the_rest(self) -> None:
+        other = "https://github.com/example/track-data/pull/84"
+        self.service.waiting = [waiting_row("mrq_bad", PR_83), waiting_row("mrq_good", other, "0457d4")]
+        self.forge.states.update({PR_83: "CLOSED", other: "CLOSED"})
+        self.service.refuses_to_settle = {"mrq_bad"}
+        settled = sync_job.reconcile_merge_requests(self.context())
+        self.assertEqual([row["id"] for row in settled], ["mrq_good"])
+        self.assertTrue(any("could not be settled" in line for line in self.log))
+
+    def test_a_run_for_one_circuit_asks_about_that_circuit(self) -> None:
+        self.service.waiting = [waiting_row("mrq_bcn", PR_83), waiting_row("mrq_df", PR_83 + "1", DEEP_FOREST)]
+        self.forge.states.update({PR_83: "CLOSED", PR_83 + "1": "CLOSED"})
+        sync_job.reconcile_merge_requests(self.context(), DEEP_FOREST)
+        self.assertEqual(self.service.asked_about, [DEEP_FOREST])
+        self.assertEqual([row[0] for row in self.service.settled], ["mrq_df"])
+
+    def test_a_dry_run_and_a_run_without_github_settle_nothing(self) -> None:
+        self.service.waiting = [waiting_row("mrq_bcn", PR_83)]
+        self.forge.states[PR_83] = "CLOSED"
+        for overrides in ({"dry_run": True}, {"report": False}, {"forge": None}):
+            self.assertEqual(sync_job.reconcile_merge_requests(self.context(**overrides)), [])
+        self.assertEqual(self.service.settled, [])
+        self.assertEqual(self.service.asked_about, [])
+
+    def test_a_service_from_before_it_could_be_asked_has_nothing_waiting(self) -> None:
+        class Older(sync_job.Service):
+            def _request(self, method: str, path: str, *args: Any, **kwargs: Any) -> Any:
+                raise ServiceError(404, "not_found", "no such route")
+
+        self.assertEqual(Older("https://example.invalid", "key").waiting_merge_requests(), [])
+
+        class Broken(sync_job.Service):
+            def _request(self, method: str, path: str, *args: Any, **kwargs: Any) -> Any:
+                raise ServiceError(500, "internal", "a bad minute")
+
+        with self.assertRaises(ServiceError):
+            Broken("https://example.invalid", "key").waiting_merge_requests()
+
+    def test_a_night_with_nothing_to_merge_still_settles_what_is_stale(self) -> None:
+        # The case the old job could never reach: no uploads pending for the
+        # circuit, so it was never visited, so its row was never looked at.
+        self.service.waiting = [waiting_row("mrq_bcn", PR_83)]
+        self.forge.states[PR_83] = "CLOSED"
+        ok, outcomes = run(self.context())
+        self.assertTrue(ok)
+        self.assertEqual(outcomes, [])
+        self.assertEqual(self.service.settled, [("mrq_bcn", "closed", "CLOSED")])
+        self.assertEqual(self.service.runs[-1]["detail"]["settled"][0]["pr_url"], PR_83)
+        self.assertIn("merge requests settled 1", self.log[-1])
+
+    def test_housekeeping_that_fails_outright_does_not_fail_the_night(self) -> None:
+        def broken(official_id: str = "") -> list[dict[str, Any]]:
+            raise ServiceError(500, "internal", "a bad minute")
+
+        self.service.waiting_merge_requests = broken  # type: ignore[method-assign]
+        ok, _ = run(self.context())
+        self.assertTrue(ok)
+        self.assertTrue(any("could not be reconciled" in line for line in self.log))
 
 
 # ── an administrator's edit ────────────────────────────────────────────────
