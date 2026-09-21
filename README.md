@@ -267,6 +267,15 @@ the gate, which will not auto-merge a pull request whose stored kinds changed
 without quorum. A metre where two manual kinds both reach quorum is a
 `quorum_conflict` for the administrator to settle.
 
+Corners and sections are authored, not surveyed, so nothing compiles them: the
+job copies the bundle's `corners` and `sections` onto the compiled document
+it hands the service, which is how a circuit's page there comes to draw each
+apex and print each name. The bundle on `main` is the authority — a merge
+keeps the first set a circuit was given, and a wrong name is corrected here by
+pull request — so a correction reaches the service the next time that circuit
+is published: on its next merged survey, or at once with
+`python tools/sync_job.py --publish-existing`.
+
 It needs two secrets on this repository: `GT7_SYNC_SERVICE_KEY` (the service
 key, rotated from the service's Admin → Settings) and the workflow's own
 `GITHUB_TOKEN`. Run it yourself to look before the job does — nothing is

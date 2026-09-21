@@ -68,6 +68,7 @@ from sync_job import (  # noqa: E402
     policy_kinds,
     publishable_copy,
     run,
+    with_authored,
 )
 
 # ── fixtures ────────────────────────────────────────────────────────────────
@@ -82,6 +83,15 @@ DEEP_FOREST_REVERSE = "f3e708"
 
 def load_survey(path: Path = SURVEY) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+CORNERS = [
+    {"n": 1, "name": "Tunnel Hairpin", "direction": "L", "apex": {"x": 12.5, "z": -40.0},
+     "entry": None, "exit": None, "note": ""},
+    {"n": 2, "name": "", "direction": None, "apex": {"x": 80.0, "z": 5.5},
+     "entry": None, "exit": None, "note": ""},
+]
+SECTIONS = [{"n": 1, "name": "Back Straight", "start": {"x": 0.0, "z": 0.0}, "end": {"x": 300.0, "z": 0.0}}]
 
 
 def gate_side(pct: float = 100.0, closed: bool = True, gaps: int = 0) -> dict[str, Any]:
@@ -205,6 +215,27 @@ class PolicyOnDocumentsTests(unittest.TestCase):
 
 
 # ── the gate ────────────────────────────────────────────────────────────────
+
+
+class AuthoredWorkTests(unittest.TestCase):
+    def test_corners_and_sections_ride_along_with_the_geometry(self) -> None:
+        compiled = {"format": "gt7-datalogger-track-compiled", "borders": {"L": [], "R": []}}
+        out = with_authored(compiled, {"corners": CORNERS, "sections": SECTIONS})
+        self.assertEqual(out["corners"], CORNERS)
+        self.assertEqual(out["sections"], SECTIONS)
+        self.assertEqual(out["borders"], compiled["borders"])
+
+    def test_the_geometry_the_gate_measured_is_left_as_it_was(self) -> None:
+        compiled = {"borders": {"L": [], "R": []}}
+        doc = {"corners": copy.deepcopy(CORNERS), "sections": []}
+        out = with_authored(compiled, doc)
+        self.assertNotIn("corners", compiled)
+        out["corners"][0]["name"] = "changed"
+        self.assertEqual(doc["corners"][0]["name"], "Tunnel Hairpin")
+
+    def test_a_circuit_nobody_has_marked_publishes_empty_lists(self) -> None:
+        out = with_authored({"borders": {}}, {})
+        self.assertEqual((out["corners"], out["sections"]), ([], []))
 
 
 class GateTests(unittest.TestCase):
@@ -606,6 +637,28 @@ class EndToEndTests(unittest.TestCase):
         looked = FakeService([], {})
         self.assertEqual(sync_job.publish_existing(self.context(looked, git=None, forge=None, dry_run=True)), 0)
         self.assertEqual(looked.published, [])
+
+    def test_the_corners_somebody_marked_are_published_with_the_geometry(self) -> None:
+        marked = copy.deepcopy(self.existing)
+        marked["corners"], marked["sections"] = CORNERS, SECTIONS
+        (self.repo / "tracks" / SURVEY.name).write_text(sync_job.canonical.dumps(marked), encoding="utf-8")
+
+        service = FakeService([], {})
+        self.assertEqual(sync_job.publish_existing(self.context(service, git=None, forge=None)), 1)
+        self.assertEqual(service.compiled[DEEP_FOREST]["corners"], CORNERS)
+        self.assertEqual(service.compiled[DEEP_FOREST]["sections"], SECTIONS)
+
+    def test_corners_a_contributor_marked_reach_the_service_when_their_survey_merges(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        upload["corners"] = CORNERS
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        service._policy["gate"]["auto_merge"] = True
+        ok, _ = run(self.context(service, FakeForge(merges=True)))
+
+        self.assertTrue(ok, self.log.getvalue())
+        # The repository had none, so the first set anybody marks is the circuit's.
+        self.assertEqual(service.compiled[DEEP_FOREST]["corners"], CORNERS)
+        self.assertEqual(service.compiled[DEEP_FOREST]["sections"], [])
 
     def test_a_dry_run_writes_and_reports_nothing(self) -> None:
         upload = survey_subset(self.existing, "feedbeef")
