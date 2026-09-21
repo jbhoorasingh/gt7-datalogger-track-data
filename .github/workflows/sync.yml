@@ -33,6 +33,17 @@ on:
         description: "One configuration's official id, or blank for every circuit with pending uploads"
         required: false
         default: ""
+      # The catch-up, for what a merge would not send: a corner somebody
+      # renamed here by pull request, or a circuit published before the job
+      # learned to send something. It needs the service key, which this
+      # workflow already has, so it can be asked for here rather than run from
+      # a machine that has to be given the key first. It opens no pull request
+      # and reports nothing about uploads.
+      publish_existing:
+        description: "Instead of merging uploads: recompile and republish every circuit already here (geometry, corners, sections)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -74,4 +85,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          python tools/sync_job.py --official-id "${{ inputs.official_id }}"
+          if [ "${{ inputs.publish_existing }}" = "true" ]; then
+            python tools/sync_job.py --publish-existing
+          else
+            python tools/sync_job.py --official-id "${{ inputs.official_id }}"
+          fi
