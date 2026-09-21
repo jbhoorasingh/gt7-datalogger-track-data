@@ -267,6 +267,14 @@ the gate, which will not auto-merge a pull request whose stored kinds changed
 without quorum. A metre where two manual kinds both reach quorum is a
 `quorum_conflict` for the administrator to settle.
 
+When a pull request is left waiting — the gate declined, or auto-merge is off
+— the job also hands the service what that pull request *would* publish: the
+same compiled document, with the finish crossings as they were recorded. The
+service keeps it for administrators only and draws it on the issue, so "right
+96 %, 4 gaps" can be looked at instead of guessed at, and drops it when the
+pull request lands or closes. Nothing depends on it: a service that refuses it
+is logged and the run goes on.
+
 Corners and sections are authored, not surveyed, so nothing compiles them: the
 job copies the bundle's `corners` and `sections` onto the compiled document
 it hands the service, which is how a circuit's page there comes to draw each

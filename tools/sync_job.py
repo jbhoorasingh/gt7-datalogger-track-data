@@ -243,6 +243,10 @@ class Service:
     def put_compiled(self, official_id: str, compiled: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/v1/tracks/{official_id}/compiled", body=compiled)
 
+    def put_candidate(self, official_id: str, compiled: dict[str, Any], pr_url: str) -> dict[str, Any]:
+        return self._request("PUT", f"/v1/tracks/{official_id}/candidate", body=compiled,
+                             params={"pr_url": pr_url})
+
     def publish(self, official_id: str, facts: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", f"/v1/tracks/{official_id}/published", body=facts)
 
@@ -383,6 +387,36 @@ def with_authored(compiled: dict[str, Any], doc: dict[str, Any]) -> dict[str, An
     out["corners"] = copy.deepcopy(doc.get("corners") or [])
     out["sections"] = copy.deepcopy(doc.get("sections") or [])
     return out
+
+
+def candidate_document(compiled: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
+    """What a pull request left waiting would publish, for the admin deciding on it.
+
+    The compiled geometry with the bundle's corners and sections, as it would
+    be published, and one thing more: the finish crossings as they were
+    recorded. The gate judges how far apart they are, the compiled document
+    carries only the line averaged through them, and a person asked to
+    overrule "spread 14 m" needs to see whether that is across the road or
+    along it.
+    """
+    out = with_authored(compiled, doc)
+    out["finish_crossings"] = copy.deepcopy(doc.get("finish_crossings") or [])
+    return out
+
+
+def send_candidate(ctx: Context, official_id: str, compiled: dict[str, Any],
+                   doc: dict[str, Any], pr_url: str) -> None:
+    """Hand the service the geometry of a pull request nobody has merged yet.
+
+    An aid to whoever reviews it, and nothing the merge depends on: a service
+    that predates the endpoint answers 404, and one that is having a bad
+    minute answers worse, and neither is a reason to fail a run whose pull
+    request is open and whose uploads are accounted for. It says so and goes on.
+    """
+    try:
+        ctx.service.put_candidate(official_id, candidate_document(compiled, doc), pr_url)
+    except ServiceError as exc:
+        ctx.log(f"  the service did not take the pull request's geometry ({exc}); nothing else depends on it")
 
 
 def stored_kinds(doc: dict[str, Any] | None) -> dict[tuple[int, int, str], str]:
@@ -1199,6 +1233,9 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
         ctx.service.report_merge_request(
             official_id=official_id, pr_url=pr_url, branch=branch, accounts=accounts_count,
             new_metres=new_m, kind_changes=len(changes), gate=gate, status=status)
+        if status != "auto_merged":
+            # Somebody has to decide about this one, so let them see it.
+            send_candidate(ctx, official_id, compiled_after, merged, pr_url)
         if status == "auto_merged":
             stored = ctx.service.put_compiled(official_id, with_authored(compiled_after, merged))
             ctx.service.publish(official_id, publication_facts(
