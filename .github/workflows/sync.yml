@@ -27,6 +27,16 @@ on:
     # 02:00 UTC, an hour before the service's own housekeeping sweep and
     # long after the evening's driving in every timezone that drives.
     - cron: "0 2 * * *"
+  # When a PERSON merges or closes one of this job's pull requests. Nothing
+  # else tells the sync service: left to the nightly run, a circuit merged at
+  # lunchtime reads "awaiting review" until two in the morning, with its edit
+  # unpublished — and every other open pull request has just gone stale, since
+  # each one rewrites index.json. So the job runs now, for everything: it
+  # publishes what landed, settles its row, and rebuilds the rest on the new
+  # main. (A merge the job makes itself starts nothing: GITHUB_TOKEN's events
+  # never do, which is also why this cannot loop.)
+  pull_request:
+    types: [closed]
   workflow_dispatch:
     inputs:
       official_id:
@@ -56,12 +66,23 @@ concurrency:
 
 jobs:
   merge:
+    # On a closed pull request: only the job's own branches, and only from this
+    # repository. A fork can name a branch `edit/anything`; it gets no secrets
+    # on this event and would only fail, but it does not get to try.
+    if: >-
+      github.event_name != 'pull_request' ||
+      ((startsWith(github.head_ref, 'sync/') || startsWith(github.head_ref, 'edit/')) &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The job works from main whatever started it. A closed pull
+          # request's own ref is its test merge, which does not exist for one
+          # that conflicted — and that is the very one this is here to mend.
+          ref: ${{ github.event_name == 'pull_request' && github.event.repository.default_branch || '' }}
 
       - uses: actions/setup-python@v5
         with:

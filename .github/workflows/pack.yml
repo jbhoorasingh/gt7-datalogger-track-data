@@ -31,6 +31,14 @@ jobs:
           python tools/build_index.py --check
           python tools/build_signatures.py --check
 
+      # The pack is for the app, so the app's word is the one that counts.
+      # validate.py alone let two circuits out whose bundles carried a
+      # `drawn-` source id: valid here, refused whole by every datalogger.
+      - name: Never ship what the app would refuse
+        run: |
+          pip install "gt7-datalogger @ git+https://github.com/jbhoorasingh/gt7-datalogger@main#subdirectory=backend"
+          python tools/check_app_agrees.py
+
       - name: Assemble the pack
         id: pack
         run: |

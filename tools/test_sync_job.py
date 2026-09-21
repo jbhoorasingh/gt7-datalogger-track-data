@@ -712,6 +712,40 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(stored[True]["smoothing"]["cap_m"], 0.75)
         self.assertNotEqual(stored[True]["borders"], stored[False]["borders"])
 
+    def test_a_bundle_the_app_would_refuse_makes_the_pull_request_a_draft(self) -> None:
+        # Production, 2026-09-21: a `drawn-` source id in a bundle. Valid by
+        # this repository's validator, refused whole by the datalogger's — and
+        # the datalogger is what a bundle is for. Every check here passed, the
+        # pull requests were merged, and the pack shipped two circuits no app
+        # would load. The job has the app, for its compiler; now it asks it.
+        tainted = sync_job.merge_into(self.existing, {
+            **self.existing,
+            "meta": {**self.existing["meta"], "runs": 1, "source_runs": {"drawn-0a1b2c3d": 1}},
+            "edges": [{"x": 9000.0 + i, "z": 9000.0, "y": None, "hx": 1.0, "hz": 0.0, "side": "R",
+                       "kind": "edge", "votes": {"edge": {"drawn-0a1b2c3d": [1, 1]}}, "run": 1, "tw": None}
+                      for i in range(6)],
+            "finish_crossings": [], "corners": [], "sections": [],
+        })
+        (self.repo / "tracks" / SURVEY.name).write_text(sync_job.canonical.dumps(tainted), encoding="utf-8")
+        for derived in ("build_index.py", "build_signatures.py"):
+            subprocess.run([sys.executable, str(self.repo / "tools" / derived)], cwd=self.repo,
+                           check=True, capture_output=True)
+        git = lambda *a: subprocess.run(["git", *a], cwd=self.repo, check=True, capture_output=True, text=True)  # noqa: E731
+        git("commit", "-q", "-am", "a bundle with a drawn source in it")
+        git("push", "-q", "origin", "main")
+
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        service._policy["gate"]["auto_merge"] = True
+        forge = FakeForge(merges=True)
+        run(self.context(service, forge))
+
+        _, _, body, draft = forge.upserts[0]
+        self.assertTrue(draft)
+        self.assertEqual(forge.merged, [])  # and a machine does not merge a draft
+        self.assertIn("the app accepts every bundle unchanged: FAIL", self.log.getvalue())
+        self.assertIn("is not a source id", self.log.getvalue())
+
     def test_an_upload_already_on_main_is_reported_merged_and_published(self) -> None:
         already = copy.deepcopy(self.existing)
         already["version"] = 4
@@ -955,6 +989,36 @@ class ReconciliationTests(unittest.TestCase):
         self.assertTrue(any("could not be reconciled" in line for line in self.log))
 
 
+# ── what starts the job ────────────────────────────────────────────────────
+
+
+class WorkflowTests(unittest.TestCase):
+    """sync.yml is configuration, and two lines of it are load-bearing."""
+
+    def setUp(self) -> None:
+        self.text = (ROOT / ".github" / "workflows" / "sync.yml").read_text(encoding="utf-8")
+
+    def test_it_runs_when_a_person_closes_one_of_its_pull_requests(self) -> None:
+        # Nothing else tells the service that somebody pressed Merge, and the
+        # other open pull requests have just gone stale in index.json.
+        self.assertRegex(self.text, r"pull_request:\n\s+types: \[closed\]")
+
+    def test_only_for_its_own_branches_and_never_for_a_fork(self) -> None:
+        guard = " ".join(self.text.split("    if: >-")[1].split("runs-on:")[0].split())
+        self.assertIn("startsWith(github.head_ref, 'sync/')", guard)
+        self.assertIn("startsWith(github.head_ref, 'edit/')", guard)
+        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", guard)
+        # A branch name is somebody else's text. It is compared, never run:
+        # nothing in a `run:` step may interpolate it.
+        for block in self.text.split("run: |")[1:]:
+            self.assertNotIn("head_ref", block.split("\n      - ")[0])
+
+    def test_it_works_from_main_whatever_started_it(self) -> None:
+        # A conflicted pull request has no test merge to check out, and that
+        # is the very one a run on close is there to mend.
+        self.assertIn("github.event_name == 'pull_request' && github.event.repository.default_branch", self.text)
+
+
 # ── an administrator's edit ────────────────────────────────────────────────
 
 DRAWN = "drawn-0a1b2c3d"
@@ -1022,13 +1086,13 @@ class EditValidationTests(unittest.TestCase):
             sync_job.validate_edit({**good, "drawn": crossings}, DEEP_FOREST)
 
     def test_drawing_the_same_border_in_twice_adds_it_once(self) -> None:
-        # "Is this edit already in main?" is answered by merging it again and
-        # seeing nothing change, so merging must be exactly that harmless.
-        drawn = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(6)])
-        once = sync_job.merge_into(self.existing, drawn)
-        twice = sync_job.merge_into(once, drawn)
-        self.assertEqual(sync_job.canonical.dumps(once), sync_job.canonical.dumps(twice))
-        self.assertEqual(len(once["edges"]), len(self.existing["edges"]) + 6)
+        # "Is this edit already in main?" is answered by applying it again and
+        # seeing nothing change, so applying must be exactly that harmless.
+        drawn = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(6)])["edges"]
+        once = corrections.with_drawn([], drawn)
+        twice = corrections.with_drawn(once, drawn)
+        self.assertEqual(once, twice)
+        self.assertEqual(len(once), 6)
 
 
 @unittest.skipUnless(HAVE_COMPILER, "needs the datalogger's compiler (app.processing.track_compile)")
@@ -1072,18 +1136,16 @@ class EditEndToEndTests(unittest.TestCase):
         self.assertEqual(branch, "edit/deep-forest-raceway")
         self.assertIn("(editor)", title)
         self.assertFalse(draft, self.log.getvalue())
-        self.assertIn("Nothing is deleted", body)
+        self.assertIn("The bundle is not touched", body)
         self.assertIn("the pit wall, recorded as the right-hand border", body)
         self.assertIn(f"keep {hidden} surveyed records out", body)
-        self.assertIn("border drawn in, under a `drawn-` source: 8 m", body)
+        self.assertIn("border drawn in: 8 m", body)
 
-        # The branch carries the corrections beside the bundle, and the bundle
-        # kept every record it had: the drawn ones were added, none removed.
+        # Everything the edit says is in the corrections, beside the bundle.
         pushed = json.loads(self.origin_has(branch, "corrections/deep-forest-raceway.json"))
         self.assertEqual(pushed["exclude"][0]["id"], "a1")
-        bundle = json.loads(self.origin_has(branch, "tracks/deep-forest-raceway.json"))
-        self.assertEqual(len(bundle["edges"]), len(self.existing["edges"]) + 8)
-        self.assertIn(DRAWN, bundle["meta"]["source_runs"])
+        self.assertEqual(len(pushed["draw"]), 8)
+        self.assertTrue(all(DRAWN in record["votes"]["edge"] for record in pushed["draw"]))
 
         # The person deciding gets to look at it, and is told where it stands.
         self.assertEqual(service.merge_requests[0]["status"], "awaiting_review")
@@ -1095,6 +1157,33 @@ class EditEndToEndTests(unittest.TestCase):
         untouched = sync_job.compile_geometry(self.existing, sync_job.smooth_borders(service.policy()))
         self.assertLess(candidate["coverage"]["R"]["surveyed_m"], untouched["coverage"]["R"]["surveyed_m"])
         self.assertEqual(service.runs[-1]["detail"]["edits"][0]["action"], "pull_request")
+
+    def test_an_edit_never_touches_the_bundle_so_the_app_still_takes_it(self) -> None:
+        # Production, 2026-09-21. The first two edits ever merged put their
+        # drawn records in the bundle, under `drawn-…`. The bundle is what the
+        # datalogger imports, and its validator takes a source id to be hex:
+        # it refused both circuits whole. main went red on "the app still
+        # accepts what we ship", and the pack shipped them anyway.
+        x, z = self.right_border_spot()
+        drawn = drawn_bundle(self.existing, [(9000.0 + i, 9000.0) for i in range(8)])
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway",
+                                                  areas=[square(x, z)], drawn=drawn))
+        run(self.context(service, FakeForge()))
+        branch = "edit/deep-forest-raceway"
+        changed = subprocess.run(["git", "diff", "--name-only", "main", branch], cwd=self.origin,
+                                 capture_output=True, text=True, check=True).stdout.split()
+        # One file. Not the bundle — and so not index.json either, whose grand
+        # total is one line that any two pull requests adding a record fight
+        # over: two edits cannot collide in a file neither of them writes.
+        self.assertEqual(changed, ["corrections/deep-forest-raceway.json"])
+        self.assertNotIn("drawn-", self.origin_has(branch, "tracks/deep-forest-raceway.json"))
+        # And what was drawn is on the map all the same.
+        candidate, _ = service.candidates[DEEP_FOREST]
+        untouched = sync_job.compile_geometry(self.existing, sync_job.smooth_borders(service.policy()))
+        self.assertEqual(len(candidate["borders"]["R"]), len(
+            sync_job.compile_geometry(sync_job.compile_input(self.existing, {}, {
+                "exclude": [square(x, z)], "draw": drawn["edges"]}), None)["borders"]["R"]))
+        self.assertNotEqual(candidate["borders"]["R"], untouched["borders"]["R"])
 
     def land(self, branch: str) -> None:
         """What a person pressing Merge on GitHub does."""
@@ -1160,14 +1249,58 @@ class EditEndToEndTests(unittest.TestCase):
         self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "closed"))
         self.assertEqual(len(forge.upserts), 1)  # and it is not reopened every night
 
-    def test_a_waiting_pull_request_is_left_alone(self) -> None:
+    def branch_head(self, branch: str) -> str:
+        return subprocess.run(["git", "rev-parse", f"refs/heads/{branch}"], cwd=self.origin,
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_a_waiting_pull_request_is_left_alone_while_main_stands_still(self) -> None:
         x, z = self.right_border_spot()
         service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
         forge = FakeForge()
         run(self.context(service, forge))
+        pushed = self.branch_head("edit/deep-forest-raceway")
         run(self.context(service, forge))
+        # A quiet night leaves a pull request quiet: no push, no edit to it,
+        # nothing said to the service that it has not been told.
+        self.assertEqual(self.branch_head("edit/deep-forest-raceway"), pushed)
         self.assertEqual(len(forge.upserts), 1)
         self.assertEqual([r[1] for r in service.edit_reports], ["pr_open"])
+        self.assertIn("up to date with main", self.log.getvalue())
+
+    def test_a_waiting_pull_request_is_rebuilt_when_main_moves(self) -> None:
+        # A survey's pull request is rebuilt from main on every run, and so is
+        # an edit's: one left alone falls behind, and what it would publish —
+        # the candidate an admin decides from — goes on describing a main that
+        # is no longer there.
+        x, z = self.right_border_spot()
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        branch = "edit/deep-forest-raceway"
+        before = self.branch_head(branch)
+
+        git = lambda *a: subprocess.run(["git", *a], cwd=self.repo, check=True, capture_output=True, text=True)  # noqa: E731
+        git("checkout", "-q", "main")
+        (self.repo / "NOTES.md").write_text("something else landed\n", encoding="utf-8")
+        git("add", "NOTES.md")
+        git("commit", "-q", "-m", "something else lands")
+        git("push", "-q", "origin", "main")
+
+        ok, _ = run(self.context(service, forge))
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertIn("rebuilt on today's main", self.log.getvalue())
+        self.assertNotEqual(self.branch_head(branch), before)
+        # The same pull request, edited — not a second one.
+        self.assertEqual([u[0] for u in forge.upserts], [branch, branch])
+        self.assertEqual(len(set(forge.open.values())), 1)
+        git("fetch", "-q", "origin")
+        self.assertEqual(subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", f"origin/{branch}"],
+                                        cwd=self.repo).returncode, 0)
+        # Still the edit it was, and still somebody's to merge.
+        pushed = json.loads(self.origin_has(branch, "corrections/deep-forest-raceway.json"))
+        self.assertEqual(pushed["exclude"][0]["id"], "a1")
+        self.assertEqual(service.edit_reports[-1][:2], ("edt_1", "pr_open"))
+        self.assertEqual(forge.merged, [])
 
     def test_an_edit_started_from_other_corrections_is_stale(self) -> None:
         x, z = self.right_border_spot()

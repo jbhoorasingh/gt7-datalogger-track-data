@@ -825,8 +825,14 @@ class Repository:
         return path
 
     def _tool(self, script: str, *args: str) -> tuple[bool, str]:
+        # A tool that imports the app finds it where this job did: installed,
+        # or in the checkout GT7_DATALOGGER_BACKEND names.
+        env = dict(os.environ)
+        backend = env.get("GT7_DATALOGGER_BACKEND")
+        if backend:
+            env["PYTHONPATH"] = os.pathsep.join(filter(None, [backend, env.get("PYTHONPATH", "")]))
         run = subprocess.run([self.python, str(self.root / "tools" / script), *args],
-                             cwd=self.root, capture_output=True, text=True)
+                             cwd=self.root, capture_output=True, text=True, env=env)
         return run.returncode == 0, (run.stdout + run.stderr).strip()
 
     def rebuild_derived(self) -> list[tuple[str, bool, str]]:
@@ -839,7 +845,15 @@ class Repository:
         GITHUB_TOKEN does not start workflows, so the answers go in the body."""
         return [("every bundle is valid", *self._tool("validate.py")),
                 ("index.json matches the bundles", *self._tool("build_index.py", "--check")),
-                ("signatures.json matches its inputs", *self._tool("build_signatures.py", "--check"))]
+                ("signatures.json matches its inputs", *self._tool("build_signatures.py", "--check")),
+                # The bundle is what the datalogger imports, and this job
+                # already has the app, for its compiler. validate.py is this
+                # repository's opinion of a bundle; this is the app's, and the
+                # two differed the day it mattered: a `drawn-` source id passed
+                # the one, was refused by the other, and two circuits shipped
+                # that no app would load. A pull request the app would refuse
+                # is a draft, and says so.
+                ("the app accepts every bundle unchanged", *self._tool("check_app_agrees.py"))]
 
 
 class Git:
@@ -879,6 +893,27 @@ class Git:
                  if (self.root / path).exists()
                  or self.run("ls-files", "--", path, check=False)]
         return self.commit(known, message) if known else False
+
+    def remote_is_current(self, branch: str, base: str = "origin/main", remote: str = "origin") -> bool:
+        """Whether the branch on the remote already IS what was just committed
+        here: the same tree, on top of today's base.
+
+        Both halves matter. The same tree on an old base is a pull request
+        that conflicts the moment anything else lands — every pull request
+        here rewrites index.json — and a new base with a different tree is a
+        pull request that says something else. Anything that cannot be
+        established is "no": pushing again is harmless, and not pushing a
+        branch that needed it is how a pull request stays broken.
+        """
+        if self.runner(["git", "fetch", "-q", remote, branch], cwd=self.root,
+                       capture_output=True, text=True).returncode != 0:
+            return False
+        theirs = self.run("rev-parse", "--verify", "-q", f"{remote}/{branch}^{{tree}}", check=False)
+        ours = self.run("rev-parse", "HEAD^{tree}", check=False)
+        if not theirs or theirs != ours:
+            return False
+        return self.runner(["git", "merge-base", "--is-ancestor", base, f"{remote}/{branch}"],
+                           cwd=self.root, capture_output=True, text=True).returncode == 0
 
     def push_force(self, branch: str, remote: str = "origin") -> None:
         self.run("push", "--force", "-q", remote, branch)
@@ -1356,12 +1391,19 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
 # ── an administrator's edit ────────────────────────────────────────────────
 #
 # The sync service's track editor produces two things and nothing else: border
-# records somebody DREW (a bridge across a gap, a kerb nobody drove), filed
-# under a `drawn-` source like any other evidence, and corrections — areas the
-# map should not draw, and the circuit's own answer about smoothing. The first
-# merges into the bundle, because it only ever adds. The second goes beside it
-# in corrections/, because it must survive every upload that follows (see
-# corrections.py).
+# records somebody DREW (a bridge across a gap, a kerb nobody drove), and
+# corrections — areas the map should not draw, and the circuit's own answer
+# about smoothing. Both go in corrections/<slug>.json, beside the bundle, and
+# neither goes in it (see corrections.py).
+#
+# The drawn records went into the bundle at first, under their `drawn-` source,
+# on the reasoning that they only ever add. It was wrong in a way nothing here
+# could see: the bundle is what the datalogger imports, its validator takes a
+# source id to be hex, and it refuses a bundle carrying `drawn-524eff6e` whole.
+# The first two edits merged turned main red on "the app still accepts what we
+# ship" and the pack shipped two circuits no app would load. So an edit never
+# touches tracks/ now — which also means it never touches index.json, and two
+# edits can no longer collide in it.
 #
 # Like a survey, an edit enters the shared map only as a merged pull request.
 # Unlike one, it is never merged by a machine: an edit is one person's opinion
@@ -1449,14 +1491,15 @@ def edit_body(config: dict[str, Any], edit: dict[str, Any], doc: dict[str, Any],
         "",
         f"> {doc['note']}",
         "",
-        f"- border drawn in, under a `{DRAWN_PREFIX}` source: {drawn_m} m",
+        f"- border drawn in: {drawn_m} m — kept in `corrections/`, under a `{DRAWN_PREFIX}` source, and never in the "
+        f"bundle, which the datalogger imports and would refuse",
         f"- excluded areas: {len(areas)} — they keep {hidden_after} surveyed record"
         f"{'' if hidden_after == 1 else 's'} out of the compiled geometry (was {hidden_before})",
         f"- smoothing for this circuit: {smoothing(smooth_after)}"
         + ("" if smooth_after == smooth_before else f" (was: {smoothing(smooth_before)})"),
         "",
-        "Nothing is deleted. The bundle keeps every record anybody surveyed; `corrections/` says which of "
-        "them the map does not draw, and removing an area brings its records back.",
+        "The bundle is not touched. It keeps every record anybody surveyed and nothing else; `corrections/` "
+        "says which of them the map does not draw and what was drawn in, and removing either undoes it.",
         "",
     ]
     if areas:
@@ -1511,9 +1554,15 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
     except (ValueError, KeyError, TypeError, ServiceError) as exc:
         return finish("failed", "failed", f"the edit could not be applied: {exc}")
 
-    merged = merge_into(existing, doc["drawn"]) if doc["drawn"] else existing
-    merged_text = canonical.dumps(merged)
-    wanted = doc["corrections"]
+    # The bundle is not the edit's to change. What was drawn joins what is
+    # drawn already — this job's list to keep, whatever the editor sent in its
+    # place: the editor may be from before the list existed, and an edit that
+    # came without one must not be read as "take every bridge away".
+    merged, merged_text = existing, existing_text
+    drawn_now = (doc["drawn"] or {}).get("edges", [])
+    held = (current or {}).get("draw", [])
+    wanted = corrections_format.validate(
+        {**doc["corrections"], "draw": corrections_format.with_drawn(held, drawn_now)})
     wanted_text = "" if corrections_format.is_empty(wanted) else corrections_format.dumps(wanted)
 
     quorum = int((ctx.policy.get("policy") or {}).get("manual_quorum", 2))
@@ -1533,15 +1582,18 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
                 config, existing, compiled, ctx.accounts, stored["r2_key"], pr_url, "auto_merged"))
         return finish("applied", "applied", "in the track data and published", pr_url)
 
-    if edit.get("status") == "pr_open":
-        # Not in main, and already a pull request: it is somebody's to merge or
-        # close, and asking again every night would reopen what they closed.
+    waiting = edit.get("status") == "pr_open"
+    if waiting:
+        # Not in main, and already a pull request. If somebody closed it, that
+        # is their answer, and opening it again every night would be arguing.
         still_open = ctx.forge.open_pr_url(branch) if ctx.forge and not ctx.dry_run else outcome.pr_url
-        if still_open:
-            outcome.action = "waiting"
-            ctx.log(f"  edit {edit_id}: waiting on {still_open}")
-            return outcome
-        return finish("closed", "closed", "its pull request was closed without being merged")
+        if not still_open:
+            return finish("closed", "closed", "its pull request was closed without being merged")
+        # Still open, so it is rebuilt from main like any survey's pull request
+        # is every night — and has to be. Every pull request here rewrites
+        # index.json, so the moment another one lands this one conflicts, and
+        # a pull request nobody rebuilds stays unmergeable for good. Two edits
+        # were merged in production and the third was left exactly like that.
 
     if doc["base"] != text_digest(current_text):
         return finish("stale", "stale", "the circuit's corrections changed after this edit was started; "
@@ -1568,19 +1620,17 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
     }, ctx.policy.get("gate") or {})
     ctx.log(f"  gate {'passed' if gate['pass'] else 'failed: ' + ', '.join(gate['failed'])} (for the reviewer)")
 
-    drawn_m = new_metres(existing, merged)
+    drawn_m = len(wanted["draw"]) - len(held)
     hidden_before = len(corrections_format.excluded(existing["edges"], current))
     hidden_after = len(corrections_format.excluded(merged["edges"], wanted))
 
     if ctx.dry_run or ctx.git is None:
         if ctx.git is None and not ctx.dry_run:
-            ctx.repo.write_bundle(slug, merged)
             ctx.repo.write_corrections(slug, wanted)
-            ctx.log(f"  wrote tracks/{slug}.json and {corrections_format.DIRECTORY}/{slug}.json (no git)")
+            ctx.log(f"  wrote {corrections_format.DIRECTORY}/{slug}.json (no git)")
         outcome.action = "pull_request"
         return outcome
 
-    ctx.repo.write_bundle(slug, merged)
     ctx.repo.write_corrections(slug, wanted)
     checks = ctx.repo.rebuild_derived() + ctx.repo.checks()
     clean = all(ok for _, ok, _ in checks)
@@ -1591,7 +1641,15 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
         [f"tracks/{slug}.json", f"{corrections_format.DIRECTORY}/{slug}.json", "index.json", "signatures.json"],
         f"Edit {config['official_name']} from the sync service's track editor\n\n{doc['note']}\n\n"
         f"Opened by {WORKFLOW} for edit {edit_id}.")
+    if waiting and ctx.git.remote_is_current(branch):
+        # Rebuilt, and it came out as what is already there: nothing landed
+        # since. No push, so a quiet night leaves a pull request quiet.
+        outcome.action = "waiting"
+        ctx.log(f"  edit {edit_id}: waiting on {outcome.pr_url or branch}, and up to date with main")
+        return outcome
     ctx.git.push_force(branch)
+    if waiting:
+        ctx.log(f"  edit {edit_id}: rebuilt on today's main")
 
     assert ctx.forge is not None
     title = f"Edit {config['official_name']}: {doc['note'][:60]}{'…' if len(doc['note']) > 60 else ''} (editor)"
