@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 25,
-  "points": 130920,
+  "surveyed": 26,
+  "points": 134073,
   "corners_labelled": 139
  },
  "unmatched_bundles": [],
@@ -1265,7 +1265,20 @@
    "type": "original",
    "reverse": false,
    "slug": "kyoto-driving-park-miyabi",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/kyoto-driving-park-miyabi.json",
+    "track": "Kyoto Driving Park - Miyabi",
+    "points": 3153,
+    "manual_points": 1397,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 5,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-23T11:31:48.835337+00:00",
+    "bytes": 502942
+   }
   },
   {
    "official_id": "40e254",
