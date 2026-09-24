@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 24,
-  "points": 128012,
+  "surveyed": 25,
+  "points": 130920,
   "corners_labelled": 139
  },
  "unmatched_bundles": [],
@@ -520,7 +520,20 @@
    "type": "real",
    "reverse": false,
    "slug": "brands-hatch-indy-circuit",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/brands-hatch-indy-circuit.json",
+    "track": "Brands Hatch Indy Circuit",
+    "points": 2908,
+    "manual_points": 245,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-23T10:14:20.526787+00:00",
+    "bytes": 465709
+   }
   },
   {
    "official_id": "1fb373",
