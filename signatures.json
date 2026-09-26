@@ -3,14 +3,14 @@
  "version": 1,
  "counts": {
   "configurations": 121,
-  "with_signature": 78,
-  "from_survey": 25,
+  "with_signature": 79,
+  "from_survey": 26,
   "from_capture": 53,
   "with_path": 77,
   "with_reverse_twin": 36,
   "path_step_m": 20,
   "ambiguous": 15,
-  "flagged": 7,
+  "flagged": 8,
   "reverse_layouts": 36
  },
  "dropped_captures": [
@@ -5706,6 +5706,21 @@
    "ambiguous_with": [],
    "flags": [
     "catalog_length_disagrees"
+   ]
+  },
+  {
+   "official_id": "3bee8b",
+   "official_name": "Circuit de Barcelona-Catalunya Rallycross Layout",
+   "length_m": 1133.0,
+   "min_x": -34.3,
+   "max_x": 224.7,
+   "min_z": -521.2,
+   "max_z": -264.1,
+   "provenance": "survey",
+   "reverse": null,
+   "ambiguous_with": [],
+   "flags": [
+    "length_from_catalog"
    ]
   },
   {
