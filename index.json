@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 121,
-  "surveyed": 26,
-  "points": 134073,
+  "surveyed": 27,
+  "points": 136098,
   "corners_labelled": 139
  },
  "unmatched_bundles": [],
@@ -2012,7 +2012,20 @@
    "type": "real",
    "reverse": false,
    "slug": "willow-springs-international-raceway-horse-thief-mile",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/willow-springs-international-raceway-horse-thief-mile.json",
+    "track": "Willow Springs International Raceway: Horse Thief Mile",
+    "points": 2025,
+    "manual_points": 106,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "updated_at": "2026-09-23T09:19:44.248077+00:00",
+    "bytes": 321885
+   }
   },
   {
    "official_id": "bcfdfc",
