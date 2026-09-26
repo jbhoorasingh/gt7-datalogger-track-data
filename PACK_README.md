@@ -15,7 +15,9 @@ python import_into_app.py http://gt7.local:8000
 This goes through the app's import endpoint, which **merges**: your own runs
 and this pack's runs are different evidence of the same metres, and both are
 kept. Your hand-labelled corners and confirmed layout matches are never
-replaced by an import.
+replaced by an import. A circuit's corrections follow its bundle in, so the
+map the app compiles is the map the site draws (an app from before 0.7
+takes the bundles and says it cannot take the corrections).
 
 **Do not just copy `tracks/*.json` into `data/track-bundles/`** unless you have
 nothing surveyed for those circuits — that overwrites your own work instead of
@@ -26,6 +28,7 @@ adding to it.
 | file | what |
 |---|---|
 | `tracks/*.json` | one bundle per surveyed configuration (format v5) |
+| `corrections/*.json` | for a circuit that has one, what an editor decided its evidence gets wrong — areas the map should not draw, borders drawn in — applied by the app when it compiles the map, never merged into the bundle |
 | `index.json` | every GT7 configuration, and which of them this pack covers |
 | `signatures.json` | length, bounding box and the driven line per configuration, so the app can name a circuit — and tell it from its reverse — from a lap you have already driven |
 | `tracks.json` | the official GT7 track/layout catalog |

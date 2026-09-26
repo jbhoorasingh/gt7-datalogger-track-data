@@ -12,6 +12,13 @@ the same metres, and merging is what keeps both.
 Your own hand-labelled corners and your confirmed layout matches are never
 replaced by an import.
 
+A circuit's corrections (`corrections/<slug>.json`, where the pack has one)
+go in after its bundle, through the app's corrections endpoint: the file is
+kept whole beside the bundle and applied when the app compiles its map, so
+the road it draws is the road the site draws. An app from before that
+endpoint answers 404 or 405, which is reported and is not a failure of the
+bundle.
+
 Needs the app's admin token if one is set: pass --token, or set GT7_ADMIN_TOKEN.
 """
 
@@ -35,6 +42,14 @@ def bundle_dir() -> Path:
     return HERE.parent / "tracks"
 
 
+def corrections_dir() -> Path:
+    """The pack's corrections directory, or this repository's."""
+    packed = HERE / "corrections"
+    if packed.is_dir():
+        return packed
+    return HERE.parent / "corrections"
+
+
 def post(base: str, doc: bytes, token: str) -> dict:
     request = urllib.request.Request(
         f"{base}/api/track-bundles/import",
@@ -42,6 +57,19 @@ def post(base: str, doc: bytes, token: str) -> dict:
         headers={"Content-Type": "application/json",
                  **({"X-API-Key": token} if token else {})},
         method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        result: dict = json.load(response)
+        return result
+
+
+def put_corrections(base: str, slug: str, doc: bytes, token: str) -> dict:
+    request = urllib.request.Request(
+        f"{base}/api/track-bundles/{slug}/corrections",
+        data=doc,
+        headers={"Content-Type": "application/json",
+                 **({"X-API-Key": token} if token else {})},
+        method="PUT",
     )
     with urllib.request.urlopen(request) as response:
         result: dict = json.load(response)
@@ -80,6 +108,21 @@ def main(argv: list[str]) -> int:
         kept = " (kept your own corner labels)" if result.get("corners_kept") else ""
         print(f"{result['track']}: +{result['added_points']:,} m of border "
               f"({result['points']:,} total, {result['sources']} source(s)){kept}")
+        corrected = corrections_dir() / path.name
+        if not corrected.exists():
+            continue
+        try:
+            applied = put_corrections(base, result["slug"], corrected.read_bytes(), token)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (404, 405):
+                print(f"  corrections not sent: this app does not take them ({exc.code})")
+            else:
+                print(f"  corrections: {exc.code} {exc.read().decode()[:200]}", file=sys.stderr)
+                failed += 1
+            continue
+        summary = applied.get("corrections") or {}
+        print(f"  corrections: {summary.get('areas', 0)} area(s) kept off the map, "
+              f"{summary.get('drawn', 0)} m drawn in")
     return 1 if failed else 0
 
 

@@ -6,9 +6,9 @@ have says nothing about what is missing, and "what is missing" is the whole
 question this repository exists to answer.
 
 It carries no timestamp on purpose: the index is a pure function of
-catalog/tracks.json and tracks/*.json, so CI can regenerate it and fail the
-build when the committed copy is stale, and a rebuild never produces a diff of
-its own.
+catalog/tracks.json, tracks/*.json and which circuits corrections/ holds a
+file for, so CI can regenerate it and fail the build when the committed copy
+is stale, and a rebuild never produces a diff of its own.
 
     python tools/build_index.py [--check]
 """
@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "catalog" / "tracks.json"
 TRACKS = ROOT / "tracks"
+CORRECTIONS = ROOT / "corrections"
 INDEX = ROOT / "index.json"
 
 MANUAL_KINDS = ("wall", "runoff", "edge")
@@ -72,8 +73,15 @@ def bundle_summary(path: Path) -> dict:
     doc = json.loads(raw.decode("utf-8"))
     edges = doc.get("edges", [])
     with_y = sum(1 for e in edges if e.get("y") is not None)
+    # The circuit's corrections, when it has any (corrections.py: a file that
+    # says nothing does not exist). Named here so a datalogger pulling the
+    # bundle fetches the file beside it and compiles the same map the site
+    # draws; absent, not null, for a circuit without one, so an index from
+    # before corrections and one for an uncorrected circuit read the same.
+    corrected = CORRECTIONS / path.name
     return {
         "file": f"tracks/{path.name}",
+        **({"corrections": f"corrections/{path.name}"} if corrected.exists() else {}),
         "track": doc["meta"]["track"],
         "official_id": (doc["meta"].get("official") or {}).get("official_id", ""),
         "points": len(edges),
@@ -127,6 +135,7 @@ def build() -> dict:
             "surveyed": len(surveyed),
             "points": sum(r["bundle"]["points"] for r in surveyed),
             "corners_labelled": sum(r["bundle"]["corners"] for r in surveyed),
+            "corrected": sum(1 for r in surveyed if "corrections" in r["bundle"]),
         },
         "unmatched_bundles": [b["file"] for b in unmatched],
         "configurations": rows,
