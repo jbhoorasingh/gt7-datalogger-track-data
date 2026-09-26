@@ -48,8 +48,9 @@ jobs:
             refs/tags/*) name="gt7-track-data-${version}" ;;
             *)           name="gt7-track-data-main" ;;
           esac
-          mkdir -p "pack/$name/tracks"
+          mkdir -p "pack/$name/tracks" "pack/$name/corrections"
           cp tracks/*.json "pack/$name/tracks/"
+          cp corrections/*.json "pack/$name/corrections/" 2>/dev/null || echo "no corrections yet"
           cp index.json signatures.json catalog/tracks.json "pack/$name/"
           cp tools/import_into_app.py "pack/$name/"
           cp PACK_README.md "pack/$name/README.md"
@@ -69,10 +70,12 @@ jobs:
               "counts": index["counts"],
               "signature_counts": signatures["counts"],
               "tracks": sorted(p.name for p in (root / "tracks").glob("*.json")),
+              "corrections": sorted(p.name for p in (root / "corrections").glob("*.json")),
           }
           (root / "MANIFEST.json").write_text(json.dumps(manifest, indent=1) + "\n")
           print(f"{manifest['counts']['surveyed']} bundles, "
                 f"{manifest['counts']['points']:,} m of border, "
+                f"{len(manifest['corrections'])} corrected, "
                 f"{signatures['counts']['with_signature']} signatures")
           PY
           (cd pack && zip -qr "../$name.zip" "$name")

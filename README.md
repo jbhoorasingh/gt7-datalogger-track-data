@@ -16,7 +16,7 @@ corrected corner label should not have to wait for a software release.
 
 | path | what |
 |---|---|
-| `index.json` | **all 121 GT7 configurations**, with their official name, country, turn count and length — and, where one exists, the bundle we have |
+| `index.json` | **all 121 GT7 configurations**, with their official name, country, turn count and length — and, where one exists, the bundle we have and the corrections file beside it |
 | `tracks/<slug>.json` | one surveyed circuit, in the app's [track bundle format](https://jbhoorasingh.github.io/gt7-datalogger/reference/track-bundle-format/) (v5) |
 | `signatures.json` | enough geometry — length, bounding box and the racing line in driving order — for the app to name a circuit from one lap, before anybody has named it by hand |
 | `catalog/tracks.json` | the official GT7 track/layout metadata the index is built from |
@@ -380,8 +380,12 @@ changes something, so a quiet night leaves it quiet)
 and sends what it would publish to the service, so whoever reviews it can look
 at it against what is published now. An edit may carry votes only under a
 `drawn-` source, and is refused otherwise: the editor draws, it does not
-survey. The pack does not ship corrections yet, so a datalogger compiling a
-bundle for itself still draws what a correction hides.
+survey. A datalogger applies the same file: `index.json` names each
+circuit's corrections beside its bundle, the app's pull fetches both and
+compiles its map from what is left, and the pack carries `corrections/` for
+its import script to send after each bundle — so the road a datalogger draws
+and judges laps against is the road the site shows, and taking an area out
+of the file brings its records back there on the next pull as well.
 
 It needs two secrets on this repository: `GT7_SYNC_SERVICE_KEY` (the service
 key, rotated from the service's Admin → Settings) and the workflow's own
