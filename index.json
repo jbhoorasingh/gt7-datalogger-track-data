@@ -7,7 +7,7 @@
   "surveyed": 26,
   "points": 134073,
   "corners_labelled": 139,
-  "corrected": 2
+  "corrected": 3
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -1852,6 +1852,7 @@
    "slug": "trial-mountain-circuit",
    "bundle": {
     "file": "tracks/trial-mountain-circuit.json",
+    "corrections": "corrections/trial-mountain-circuit.json",
     "track": "Trial Mountain Circuit",
     "points": 5311,
     "manual_points": 5136,
