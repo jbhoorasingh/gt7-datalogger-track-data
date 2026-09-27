@@ -1172,10 +1172,12 @@ class EditEndToEndTests(unittest.TestCase):
         branch = "edit/deep-forest-raceway"
         changed = subprocess.run(["git", "diff", "--name-only", "main", branch], cwd=self.origin,
                                  capture_output=True, text=True, check=True).stdout.split()
-        # One file. Not the bundle — and so not index.json either, whose grand
-        # total is one line that any two pull requests adding a record fight
-        # over: two edits cannot collide in a file neither of them writes.
-        self.assertEqual(changed, ["corrections/deep-forest-raceway.json"])
+        # The corrections, and index.json — which names each circuit's
+        # corrections since #101, so the pack and the site ship them. Never the
+        # bundle. (Two edits can meet in index.json now; a waiting edit is
+        # rebuilt from main every night, which is what settles that.)
+        self.assertEqual(changed, ["corrections/deep-forest-raceway.json", "index.json"])
+        self.assertFalse([name for name in changed if name.startswith("tracks/")])
         self.assertNotIn("drawn-", self.origin_has(branch, "tracks/deep-forest-raceway.json"))
         # And what was drawn is on the map all the same.
         candidate, _ = service.candidates[DEEP_FOREST]

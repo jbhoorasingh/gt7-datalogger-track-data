@@ -1402,8 +1402,9 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
 # source id to be hex, and it refuses a bundle carrying `drawn-524eff6e` whole.
 # The first two edits merged turned main red on "the app still accepts what we
 # ship" and the pack shipped two circuits no app would load. So an edit never
-# touches tracks/ now — which also means it never touches index.json, and two
-# edits can no longer collide in it.
+# touches tracks/ now. It does touch index.json, which names each circuit's
+# corrections file (#101); a waiting edit is rebuilt from main every night, so
+# two of them meeting there settles itself.
 #
 # Like a survey, an edit enters the shared map only as a merged pull request.
 # Unlike one, it is never merged by a machine: an edit is one person's opinion
