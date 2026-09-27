@@ -7,7 +7,7 @@
   "surveyed": 26,
   "points": 134073,
   "corners_labelled": 139,
-  "corrected": 3
+  "corrected": 4
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -896,6 +896,7 @@
    "slug": "deep-forest-raceway",
    "bundle": {
     "file": "tracks/deep-forest-raceway.json",
+    "corrections": "corrections/deep-forest-raceway.json",
     "track": "Deep Forest Raceway",
     "points": 4414,
     "manual_points": 1513,
