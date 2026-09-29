@@ -7,7 +7,7 @@
   "surveyed": 26,
   "points": 134073,
   "corners_labelled": 139,
-  "corrected": 4
+  "corrected": 5
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -330,6 +330,7 @@
    "slug": "autodromo-nazionale-monza",
    "bundle": {
     "file": "tracks/autodromo-nazionale-monza.json",
+    "corrections": "corrections/autodromo-nazionale-monza.json",
     "track": "Autodromo Nazionale Monza (Full Course)",
     "points": 9192,
     "manual_points": 6076,
