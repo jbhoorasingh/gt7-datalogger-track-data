@@ -3,14 +3,14 @@
  "version": 1,
  "counts": {
   "configurations": 121,
-  "with_signature": 78,
-  "from_survey": 25,
+  "with_signature": 79,
+  "from_survey": 26,
   "from_capture": 53,
   "with_path": 77,
   "with_reverse_twin": 36,
   "path_step_m": 20,
   "ambiguous": 15,
-  "flagged": 7,
+  "flagged": 8,
   "reverse_layouts": 36
  },
  "dropped_captures": [
@@ -19009,6 +19009,21 @@
    "reverse": null,
    "ambiguous_with": [],
    "flags": []
+  },
+  {
+   "official_id": "4414cb",
+   "official_name": "Suzuka Circuit East Course",
+   "length_m": 2243.0,
+   "min_x": 319.1,
+   "max_x": 987.8,
+   "min_z": -269.8,
+   "max_z": 527.4,
+   "provenance": "survey",
+   "reverse": null,
+   "ambiguous_with": [],
+   "flags": [
+    "length_from_catalog"
+   ]
   },
   {
    "official_id": "5aeb53",
