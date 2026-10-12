@@ -12840,5 +12840,6 @@
   {"n":16,"name":"","direction":null,"apex":{"x":-433.8,"z":-159.8},"entry":null,"exit":null,"note":""},
   {"n":17,"name":"","direction":null,"apex":{"x":-435.9,"z":206.8},"entry":null,"exit":null,"note":""}
  ],
- "sections": []
+ "sections": [],
+ "sectors": []
 }

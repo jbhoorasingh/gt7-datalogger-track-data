@@ -25,6 +25,10 @@ v4 exists because v3 cannot describe what a shared repository needs:
     bundle without it, because a typed track name cannot place one.
   * **`corners` and `sections`** — authored rather than surveyed, so they are
     kept through a merge instead of being recomputed from evidence.
+  * **`sectors`** (optional, datalogger 0.8) — authored like them: one record
+    per sector boundary, the position where sector `n` ends. Two records make
+    three sectors; the last runs to the start/finish line. A document without
+    the key has no sectors and a consumer falls back to thirds of the lap.
 
 v5 (datalogger 0.7, #96) changes what a record IS without changing what one
 looks like: one record per metre per side **per road level**. Where a circuit
@@ -63,6 +67,7 @@ GRID_M = 1.0  # dedup cell: one record per metre per side, per road level
 LEVEL_SEP_M = 3.0
 MAX_POINTS = 50_000
 MAX_FINISH_CROSSINGS = 20
+MAX_SECTORS = 20  # sector boundaries; GT7 shows three sectors
 
 # Resolution order, unchanged from v3: manual marks beat automatic inference
 # outright rather than by majority, because the surface chars are blind to
@@ -413,6 +418,28 @@ def _check_sections(sections: Any, problems: list[str]) -> None:
             _fail(problems, f"sections[{i}]: name is not text")
 
 
+def _check_sectors(sectors: Any, problems: list[str]) -> None:
+    # A boundary is a place on the road, like a corner's apex: that is the
+    # one thing a record has to have.
+    if not isinstance(sectors, list):
+        _fail(problems, "sectors is not an array")
+        return
+    if len(sectors) > MAX_SECTORS:
+        _fail(problems, f"sectors: {len(sectors)} boundaries exceeds the "
+                        f"{MAX_SECTORS} cap")
+    for i, s in enumerate(sectors):
+        if not isinstance(s, dict):
+            _fail(problems, f"sectors[{i}] is not an object")
+            continue
+        if not _is_int(s.get("n")) or s["n"] < 1:
+            _fail(problems, f"sectors[{i}]: n is {s.get('n')!r}, not a "
+                            "sector number")
+        if not isinstance(s.get("name", ""), str):
+            _fail(problems, f"sectors[{i}]: name is not text")
+        if not _point(s.get("end")):
+            _fail(problems, f"sectors[{i}]: end is not a position")
+
+
 def validate_document(doc: Any) -> dict[str, Any]:
     """Return the document if it is a well-formed v4 bundle, else raise.
 
@@ -454,6 +481,7 @@ def validate_document(doc: Any) -> dict[str, Any]:
     _check_finish(doc.get("finish_crossings", []), problems)
     _check_corners(doc.get("corners", []), problems)
     _check_sections(doc.get("sections", []), problems)
+    _check_sectors(doc.get("sectors", []), problems)
 
     if problems:
         shown = problems[:MAX_REPORTED]

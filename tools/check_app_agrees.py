@@ -77,6 +77,7 @@ def check(path: Path) -> list[str]:
                 count(got, "finish_crossings")),
         compare("corner count", count(doc, "corners"), count(got, "corners")),
         compare("section count", count(doc, "sections"), count(got, "sections")),
+        compare("sector count", count(doc, "sectors"), count(got, "sectors")),
         compare("meta.source_runs", ours_meta.get("source_runs"),
                 theirs_meta.get("source_runs")),
         compare("meta.runs", ours_meta.get("runs"), theirs_meta.get("runs")),

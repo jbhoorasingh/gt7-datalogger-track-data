@@ -422,7 +422,8 @@ def compile_input(doc: dict[str, Any], kinds: dict[tuple[int, int, str], str],
 
 
 def with_authored(compiled: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
-    """The compiled geometry with the bundle's corners and sections riding along.
+    """The compiled geometry with the bundle's corners, sections and sector
+    boundaries riding along.
 
     The compiler draws what was surveyed and knows nothing of what was
     authored: where somebody marked each apex and what they called it. Those
@@ -437,6 +438,7 @@ def with_authored(compiled: dict[str, Any], doc: dict[str, Any]) -> dict[str, An
     out = dict(compiled)
     out["corners"] = copy.deepcopy(doc.get("corners") or [])
     out["sections"] = copy.deepcopy(doc.get("sections") or [])
+    out["sectors"] = copy.deepcopy(doc.get("sectors") or [])
     return out
 
 
@@ -1452,8 +1454,10 @@ def validate_edit(raw: Any, official_id: str) -> dict[str, Any]:
         forged = sorted(source for source in sources if not source.startswith(DRAWN_PREFIX))
         if forged:
             raise ValueError(f"an edit may only add records under a {DRAWN_PREFIX} source, not {', '.join(forged)}")
-        if drawn.get("finish_crossings") or drawn.get("corners") or drawn.get("sections"):
-            raise ValueError("an edit's drawn records carry borders only: no crossings, corners or sections")
+        if (drawn.get("finish_crossings") or drawn.get("corners") or drawn.get("sections")
+                or drawn.get("sectors")):
+            raise ValueError("an edit's drawn records carry borders only: no crossings, "
+                             "corners, sections or sectors")
         if not drawn["edges"]:
             drawn = None
 

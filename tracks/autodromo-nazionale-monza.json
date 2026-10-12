@@ -9225,5 +9225,6 @@
  "sections": [
   {"n":1,"name":"Serraglio","start":{"x":595,"z":-858.7},"end":{"x":-34.2,"z":-371.9}},
   {"n":2,"name":"Rettilineo Box","start":{"x":-525.6,"z":599.2},"end":{"x":-437.9,"z":-459.8}}
- ]
+ ],
+ "sectors": []
 }

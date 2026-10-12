@@ -92,6 +92,7 @@ def bundle_summary(path: Path) -> dict:
         "finish_crossings": len(doc.get("finish_crossings", [])),
         "corners": len(doc.get("corners", [])),
         "sections": len(doc.get("sections", [])),
+        "sectors": len(doc.get("sectors", [])),
         "updated_at": doc["meta"].get("updated_at", ""),
         # Counted off LF-normalised content, not path.stat().st_size: a
         # working tree checked out with CRLF endings inflates the on-disk size

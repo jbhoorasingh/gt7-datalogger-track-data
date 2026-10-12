@@ -7364,5 +7364,6 @@
  ],
  "sections": [
   {"n":1,"name":"Kemmel Straight","start":{"x":296.2,"z":-44},"end":{"x":506,"z":679.6}}
- ]
+ ],
+ "sectors": []
 }

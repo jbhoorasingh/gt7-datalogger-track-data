@@ -6682,5 +6682,6 @@
   {"n":22,"name":"","direction":null,"apex":{"x":565.2,"z":-522.7},"entry":null,"exit":null,"note":""},
   {"n":23,"name":"","direction":null,"apex":{"x":621.2,"z":-988.5},"entry":null,"exit":null,"note":""}
  ],
- "sections": []
+ "sections": [],
+ "sectors": []
 }

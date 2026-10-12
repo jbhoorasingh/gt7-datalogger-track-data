@@ -94,6 +94,8 @@ CORNERS = [
      "entry": None, "exit": None, "note": ""},
 ]
 SECTIONS = [{"n": 1, "name": "Back Straight", "start": {"x": 0.0, "z": 0.0}, "end": {"x": 300.0, "z": 0.0}}]
+SECTORS = [{"n": 1, "name": "", "end": {"x": 150.0, "z": 0.0}},
+           {"n": 2, "name": "", "end": {"x": 250.0, "z": 0.0}}]
 
 
 def gate_side(pct: float = 100.0, closed: bool = True, gaps: int = 0) -> dict[str, Any]:
@@ -279,9 +281,11 @@ class SmoothingSwitchTests(unittest.TestCase):
 class AuthoredWorkTests(unittest.TestCase):
     def test_corners_and_sections_ride_along_with_the_geometry(self) -> None:
         compiled = {"format": "gt7-datalogger-track-compiled", "borders": {"L": [], "R": []}}
-        out = with_authored(compiled, {"corners": CORNERS, "sections": SECTIONS})
+        out = with_authored(compiled, {"corners": CORNERS, "sections": SECTIONS,
+                                       "sectors": SECTORS})
         self.assertEqual(out["corners"], CORNERS)
         self.assertEqual(out["sections"], SECTIONS)
+        self.assertEqual(out["sectors"], SECTORS)
         self.assertEqual(out["borders"], compiled["borders"])
 
     def test_the_geometry_the_gate_measured_is_left_as_it_was(self) -> None:
@@ -303,8 +307,10 @@ class AuthoredWorkTests(unittest.TestCase):
         self.assertEqual(candidate_document({"borders": {}}, {})["finish_crossings"], [])
 
     def test_a_circuit_nobody_has_marked_publishes_empty_lists(self) -> None:
+        # A bundle from before sector boundaries existed has no key at all;
+        # it publishes an empty list like the others.
         out = with_authored({"borders": {}}, {})
-        self.assertEqual((out["corners"], out["sections"]), ([], []))
+        self.assertEqual((out["corners"], out["sections"], out["sectors"]), ([], [], []))
 
 
 class GateTests(unittest.TestCase):
