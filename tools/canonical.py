@@ -28,6 +28,7 @@ EDGE_KEYS = ("x", "z", "y", "hx", "hz", "side", "kind", "votes", "run", "tw")
 FINISH_KEYS = ("x", "z", "hx", "hz", "lap")
 CORNER_KEYS = ("n", "name", "direction", "apex", "entry", "exit", "note")
 SECTION_KEYS = ("n", "name", "start", "end")
+SECTOR_KEYS = ("n", "name", "end")
 META_KEYS = ("track", "runs", "source_runs", "updated_at", "official")
 
 
@@ -89,6 +90,8 @@ def dumps(doc: dict[str, Any]) -> str:
         + _records(doc.get("corners", []), lambda r: _ordered(r, CORNER_KEYS)),
         " \"sections\": "
         + _records(doc.get("sections", []), lambda r: _ordered(r, SECTION_KEYS)),
+        " \"sectors\": "
+        + _records(doc.get("sectors", []), lambda r: _ordered(r, SECTOR_KEYS)),
     ]
     return "{\n" + ",\n".join(parts) + "\n}\n"
 

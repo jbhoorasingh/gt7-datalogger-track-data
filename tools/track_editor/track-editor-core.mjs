@@ -184,6 +184,17 @@ function validateSections(items) {
   });
 }
 
+function validateSectors(items) {
+  if (!Array.isArray(items)) fail("sectors must be an array");
+  items.forEach((sector, index) => {
+    const where = `sectors[${index}]`;
+    if (!object(sector)) fail(`${where} must be an object`);
+    if (!integer(sector.n) || sector.n < 1) fail(`${where}.n must be a positive integer`);
+    if (sector.name !== undefined && typeof sector.name !== "string") fail(`${where}.name must be text`);
+    validatePosition(sector.end, `${where}.end`);
+  });
+}
+
 export function validateBundle(input) {
   if (!object(input)) fail("The selected file does not contain a bundle object");
   if (input.format !== FORMAT) fail(`format must be ${JSON.stringify(FORMAT)}`);
@@ -193,6 +204,7 @@ export function validateBundle(input) {
   validateFinish(input.finish_crossings ?? []);
   validateCorners(input.corners ?? []);
   validateSections(input.sections ?? []);
+  validateSectors(input.sectors ?? []);
   return input;
 }
 

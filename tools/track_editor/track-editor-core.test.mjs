@@ -430,6 +430,7 @@ test("editing keeps the authored work the survey did not produce", () => {
   const document = bundle();
   document.corners = [{ n: 1, name: "Hairpin", direction: "L", apex: { x: 1, z: 2 } }];
   document.sections = [{ n: 1, name: "Sector 1" }];
+  document.sectors = [{ n: 1, name: "", end: { x: 5, z: 0 } }];
   const model = new BundleEditorModel(document);
 
   const source = drawnSourceId(model.document);
@@ -443,6 +444,7 @@ test("editing keeps the authored work the survey did not produce", () => {
 
   assert.deepEqual(exported.corners, document.corners);
   assert.deepEqual(exported.sections, document.sections);
+  assert.deepEqual(exported.sectors, document.sectors);
   // ...and the fields no part of this editor knows about.
   assert.deepEqual(exported.extension, { preserved: true });
   assert.equal(exported.meta.preserved, "metadata");

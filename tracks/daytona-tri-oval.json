@@ -6799,5 +6799,6 @@
  "sections": [
   {"n":1,"name":"Backstretch","start":{"x":-40.0,"z":572.1},"end":{"x":522.9,"z":-195.6}},
   {"n":2,"name":"Frontstretch","start":{"x":19.3,"z":-597.0},"end":{"x":-561.2,"z":193.5}}
- ]
+ ],
+ "sectors": []
 }

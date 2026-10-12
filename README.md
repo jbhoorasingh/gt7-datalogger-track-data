@@ -55,8 +55,8 @@ python import_into_app.py http://gt7.local:8000
 
 That goes through the app's import endpoint, which **merges**: your own runs
 and the pack's runs are different evidence of the same metres, and both are
-kept. Your hand-labelled corners and your confirmed layout matches are never
-replaced.
+kept. Your hand-labelled corners, sections and sector boundaries and your
+confirmed layout matches are never replaced.
 
 > Copying the files straight into `data/track-bundles/` instead would
 > *overwrite* whatever you have surveyed yourself. Only do that for circuits
@@ -287,10 +287,12 @@ service keeps it for administrators only and draws it on the issue, so "right
 pull request lands or closes. Nothing depends on it: a service that refuses it
 is logged and the run goes on.
 
-Corners and sections are authored, not surveyed, so nothing compiles them: the
-job copies the bundle's `corners` and `sections` onto the compiled document
-it hands the service, which is how a circuit's page there comes to draw each
-apex and print each name. The bundle on `main` is the authority — a merge
+Corners, sections and sector boundaries are authored, not surveyed, so nothing
+compiles them: the job copies the bundle's `corners`, `sections` and `sectors`
+onto the compiled document it hands the service, which is how a circuit's page
+there comes to draw each apex and print each name. (`sectors` is optional —
+one record per boundary, where sector `n` ends; a bundle without the key has
+none.) The bundle on `main` is the authority — a merge
 keeps the first set a circuit was given, and a wrong name is corrected here by
 pull request — so a correction reaches the service the next time that circuit
 is published: on its next merged survey, or at once with

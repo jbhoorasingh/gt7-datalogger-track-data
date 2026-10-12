@@ -61,6 +61,8 @@ def merge_into(existing: dict, incoming: dict) -> dict:
     }
     out["corners"] = existing["corners"] or incoming["corners"]
     out["sections"] = existing["sections"] or incoming["sections"]
+    # Optional key: a file from before sector boundaries has none.
+    out["sectors"] = existing.get("sectors") or incoming.get("sectors") or []
     return out
 
 

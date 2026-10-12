@@ -4684,5 +4684,6 @@
   {"n":6,"name":"","direction":null,"apex":{"x":177.6,"z":-262.3},"entry":null,"exit":null,"note":""},
   {"n":7,"name":"","direction":null,"apex":{"x":212.1,"z":-155.6},"entry":null,"exit":null,"note":""}
  ],
- "sections": []
+ "sections": [],
+ "sectors": []
 }

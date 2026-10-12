@@ -90,8 +90,9 @@
     "finish_crossings": 6,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:21:59.299336+00:00",
-    "bytes": 369853
+    "bytes": 369869
    }
   },
   {
@@ -131,8 +132,9 @@
     "finish_crossings": 4,
     "corners": 17,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-20T15:36:58.926124+00:00",
-    "bytes": 2043905
+    "bytes": 2043921
    }
   },
   {
@@ -257,8 +259,9 @@
     "finish_crossings": 6,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:21:59.792435+00:00",
-    "bytes": 545412
+    "bytes": 545428
    }
   },
   {
@@ -298,8 +301,9 @@
     "finish_crossings": 12,
     "corners": 7,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:21:59.530301+00:00",
-    "bytes": 857945
+    "bytes": 857961
    }
   },
   {
@@ -339,8 +343,9 @@
     "finish_crossings": 5,
     "corners": 11,
     "sections": 2,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:00.642013+00:00",
-    "bytes": 1498512
+    "bytes": 1498528
    }
   },
   {
@@ -380,8 +385,9 @@
     "finish_crossings": 4,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-23T08:52:59.302351+00:00",
-    "bytes": 937929
+    "bytes": 937945
    }
   },
   {
@@ -533,8 +539,9 @@
     "finish_crossings": 4,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-23T10:14:20.526787+00:00",
-    "bytes": 465709
+    "bytes": 465725
    }
   },
   {
@@ -560,8 +567,9 @@
     "finish_crossings": 6,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-16T17:11:19.181100+00:00",
-    "bytes": 525780
+    "bytes": 525796
    }
   },
   {
@@ -587,8 +595,9 @@
     "finish_crossings": 3,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-16T17:28:08.459498+00:00",
-    "bytes": 385788
+    "bytes": 385804
    }
   },
   {
@@ -643,8 +652,9 @@
     "finish_crossings": 3,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-20T17:34:54.730533+00:00",
-    "bytes": 823551
+    "bytes": 823567
    }
   },
   {
@@ -782,8 +792,9 @@
     "finish_crossings": 3,
     "corners": 19,
     "sections": 1,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:00.984402+00:00",
-    "bytes": 1136261
+    "bytes": 1136277
    }
   },
   {
@@ -851,8 +862,9 @@
     "finish_crossings": 2,
     "corners": 12,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:01.245000+00:00",
-    "bytes": 886376
+    "bytes": 886392
    }
   },
   {
@@ -878,8 +890,9 @@
     "finish_crossings": 4,
     "corners": 4,
     "sections": 2,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:01.588687+00:00",
-    "bytes": 1029045
+    "bytes": 1029061
    }
   },
   {
@@ -906,8 +919,9 @@
     "finish_crossings": 5,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:01.809395+00:00",
-    "bytes": 681286
+    "bytes": 681302
    }
   },
   {
@@ -975,8 +989,9 @@
     "finish_crossings": 12,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:02.030318+00:00",
-    "bytes": 779317
+    "bytes": 779333
    }
   },
   {
@@ -1072,8 +1087,9 @@
     "finish_crossings": 4,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:02.407507+00:00",
-    "bytes": 1125122
+    "bytes": 1125138
    }
   },
   {
@@ -1183,8 +1199,9 @@
     "finish_crossings": 5,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-16T18:19:00.294705+00:00",
-    "bytes": 716497
+    "bytes": 716513
    }
   },
   {
@@ -1280,8 +1297,9 @@
     "finish_crossings": 5,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-23T11:31:48.835337+00:00",
-    "bytes": 502942
+    "bytes": 502958
    }
   },
   {
@@ -1405,8 +1423,9 @@
     "finish_crossings": 3,
     "corners": 23,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:02.717647+00:00",
-    "bytes": 1042029
+    "bytes": 1042045
    }
   },
   {
@@ -1432,8 +1451,9 @@
     "finish_crossings": 5,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:02.820371+00:00",
-    "bytes": 219188
+    "bytes": 219204
    }
   },
   {
@@ -1571,8 +1591,9 @@
     "finish_crossings": 9,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:02.973468+00:00",
-    "bytes": 544039
+    "bytes": 544055
    }
   },
   {
@@ -1598,8 +1619,9 @@
     "finish_crossings": 2,
     "corners": 15,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:03.186238+00:00",
-    "bytes": 753971
+    "bytes": 753987
    }
   },
   {
@@ -1737,8 +1759,9 @@
     "finish_crossings": 5,
     "corners": 19,
     "sections": 4,
+    "sectors": 0,
     "updated_at": "2026-09-28T21:25:45.895278+00:00",
-    "bytes": 1497290
+    "bytes": 1497306
    }
   },
   {
@@ -1863,8 +1886,9 @@
     "finish_crossings": 3,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:03.551860+00:00",
-    "bytes": 807240
+    "bytes": 807256
    }
   },
   {
@@ -1904,8 +1928,9 @@
     "finish_crossings": 4,
     "corners": 12,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-16T16:43:02.574025+00:00",
-    "bytes": 375008
+    "bytes": 375024
    }
   },
   {
@@ -1959,8 +1984,9 @@
     "finish_crossings": 3,
     "corners": 0,
     "sections": 0,
+    "sectors": 0,
     "updated_at": "2026-09-15T22:22:03.754596+00:00",
-    "bytes": 590890
+    "bytes": 590906
    }
   },
   {

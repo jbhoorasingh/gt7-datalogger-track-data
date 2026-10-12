@@ -5848,5 +5848,6 @@
   {"n":11,"name":"","direction":null,"apex":{"x":573.3,"z":-299.6},"entry":null,"exit":null,"note":""},
   {"n":12,"name":"","direction":null,"apex":{"x":335.0,"z":-705.1},"entry":null,"exit":null,"note":""}
  ],
- "sections": []
+ "sections": [],
+ "sectors": []
 }
