@@ -356,6 +356,15 @@ class GateTests(unittest.TestCase):
         unknown = evaluate_gate({**held, "previous_coverage": None}, SETTINGS)
         self.assertEqual(unknown["failed"], ["coverage_held"])
 
+        # A loss a person accepted passes with their decision written on it;
+        # the same acceptance says nothing on a merge that holds coverage.
+        accepted = evaluate_gate({**held, "coverage": {"left": gate_side(89), "right": gate_side(80)},
+                                  "coverage_accepted_at": "2026-10-14T01:39:12Z"}, SETTINGS)
+        self.assertTrue(accepted["pass"])
+        self.assertIn("accepted by the administrator on 2026-10-14T01:39:12Z", accepted["criteria"][-2]["value"])
+        quiet = evaluate_gate({**held, "coverage_accepted_at": "2026-10-14T01:39:12Z"}, SETTINGS)
+        self.assertNotIn("accepted", quiet["criteria"][-2]["value"])
+
         changed = evaluate_gate({**held, "kind_changes": [
             {"side": "L", "x": 12.34, "z": -5.0, "from": "auto", "to": "wall", "corroborated": False},
             {"side": "R", "x": 1.0, "z": 1.0, "from": "auto", "to": "straddle", "corroborated": True},
@@ -363,6 +372,31 @@ class GateTests(unittest.TestCase):
         self.assertEqual(changed["failed"], ["kind_changes"])
         self.assertIn("1 of 2 not corroborated (first at (12.3, -5.0) side L: auto → wall)",
                       changed["criteria"][-1]["value"])
+
+
+class CoverageAcceptanceTests(unittest.TestCase):
+    DECISIONS = [
+        {"issue_id": "iss_1", "official_id": "e6817f", "upload_id": "upl_1",
+         "uploads": ["upl_1", "upl_2"], "sides": ["right"], "decided_at": "2026-10-02T04:22:27Z"},
+        {"issue_id": "iss_2", "official_id": "e6817f", "upload_id": "upl_1",
+         "uploads": ["upl_1", "upl_2"], "sides": ["right"], "decided_at": "2026-10-14T01:39:12Z"},
+    ]
+
+    def test_the_newest_acceptance_covering_the_merge_is_named(self) -> None:
+        self.assertEqual(sync_job.coverage_acceptance(self.DECISIONS, ["upl_1", "upl_2"]), "2026-10-14T01:39:12Z")
+        # Fewer of the same uploads — one rejected since — is still the same loss.
+        self.assertEqual(sync_job.coverage_acceptance(self.DECISIONS, ["upl_2"]), "2026-10-14T01:39:12Z")
+
+    def test_a_survey_that_arrived_since_is_a_new_question(self) -> None:
+        self.assertEqual(sync_job.coverage_acceptance(self.DECISIONS, ["upl_1", "upl_3"]), "")
+        self.assertEqual(sync_job.coverage_acceptance([], ["upl_1"]), "")
+        self.assertEqual(sync_job.coverage_acceptance(self.DECISIONS, []), "")
+
+    def test_an_acceptance_that_names_only_its_upload_counts_for_it(self) -> None:
+        bare = [{"issue_id": "iss_3", "official_id": "x", "upload_id": "upl_9", "uploads": [],
+                 "decided_at": "2026-10-01T00:00:00Z"}]
+        self.assertEqual(sync_job.coverage_acceptance(bare, ["upl_9"]), "2026-10-01T00:00:00Z")
+        self.assertEqual(sync_job.coverage_acceptance(bare, ["upl_9", "upl_8"]), "")
 
 
 # ── which layout a survey is of ─────────────────────────────────────────────
@@ -429,6 +463,7 @@ class FakeService:
         self.runs: list[dict[str, Any]] = []
         self.kind: list[dict[str, Any]] = []
         self.layout: list[dict[str, Any]] = []
+        self.coverage: list[dict[str, Any]] = []
         self.waiting: list[dict[str, Any]] = []
         self.settled: list[tuple[str, str, str]] = []
         self.refuses_to_settle: set[str] = set()
@@ -482,6 +517,9 @@ class FakeService:
 
     def layout_decisions(self, official_id: str) -> list[dict[str, Any]]:
         return [d for d in self.layout if d["official_id"] == official_id]
+
+    def coverage_decisions(self, official_id: str) -> list[dict[str, Any]]:
+        return [d for d in self.coverage if d["official_id"] == official_id]
 
     def open_run(self) -> str:
         self.runs.append({"id": "job_test", "open": True})
