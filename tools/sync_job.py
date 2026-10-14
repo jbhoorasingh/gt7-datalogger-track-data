@@ -220,6 +220,10 @@ class Service:
         page = self._request("GET", "/v1/layout-decisions", params={"official_id": official_id, "limit": 200})
         return list(page.get("decisions", []))
 
+    def coverage_decisions(self, official_id: str) -> list[dict[str, Any]]:
+        page = self._request("GET", "/v1/coverage-decisions", params={"official_id": official_id, "limit": 200})
+        return list(page.get("decisions", []))
+
     # -- reporting --
 
     def open_run(self) -> str:
@@ -745,11 +749,20 @@ def evaluate_gate(inp: dict[str, Any], settings: dict[str, Any]) -> dict[str, An
         if comparable:
             lb, rb = before["left"]["pct"], before["right"]["pct"]
             la, ra = coverage["left"]["pct"], coverage["right"]["pct"]
-        criteria.append({"id": "coverage_held", "label": "Coverage held",
-                         "pass": comparable and la >= lb and ra >= rb,
-                         "value": (f"left {_percent(lb)} → {_percent(la)}; right {_percent(rb)} → {_percent(ra)}"
-                                   if comparable else "no published coverage to compare against"),
-                         "expected": "neither side lower than what is published"})
+        held = comparable and la >= lb and ra >= rb
+        value = (f"left {_percent(lb)} → {_percent(la)}; right {_percent(rb)} → {_percent(ra)}"
+                 if comparable else "no published coverage to compare against")
+        # A loss a person accepted, for these uploads, through the queue: the
+        # criterion passes with their decision on it, as the layout one does.
+        accepted_coverage = inp.get("coverage_accepted_at")
+        if accepted_coverage and not held:
+            criteria.append({"id": "coverage_held", "label": "Coverage held", "pass": True,
+                             "value": f"{value}, accepted by the administrator on {accepted_coverage}",
+                             "expected": "neither side lower than what is published"})
+        else:
+            criteria.append({"id": "coverage_held", "label": "Coverage held", "pass": held,
+                             "value": value,
+                             "expected": "neither side lower than what is published"})
 
         changes = list(inp.get("kind_changes") or [])
         uncorroborated = [c for c in changes if not c["corroborated"]]
@@ -1165,6 +1178,29 @@ def pr_body(outcome: Outcome, config: dict[str, Any], uploads: list[dict[str, An
     return "\n".join(lines) + "\n"
 
 
+def coverage_acceptance(decisions: list[dict[str, Any]], merged_ids: list[str]) -> str:
+    """When a person accepted the coverage these uploads lose, if they did.
+
+    A `coverage_regressed` issue is measured over a set of uploads, and the
+    acceptance is of that set. It holds for a merge made of those uploads
+    (or fewer of them, when one was rejected since), and not for a merge
+    that a later survey has joined: that is a new loss nobody has looked at,
+    and the job asks about it. The newest acceptance that covers the merge
+    is the one named on the gate.
+    """
+    wanted = {str(upload_id) for upload_id in merged_ids}
+    if not wanted:
+        return ""
+    latest = ""
+    for decision in decisions:
+        covered = {str(upload_id) for upload_id in (decision.get("uploads") or [])}
+        if not covered and decision.get("upload_id"):
+            covered = {str(decision["upload_id"])}
+        if wanted <= covered:
+            latest = max(latest, str(decision.get("decided_at") or ""))
+    return latest
+
+
 def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]]) -> Outcome:
     config = ctx.configs.get(official_id)
     ids = [u["id"] for u in uploads]
@@ -1304,6 +1340,7 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
         "layout_accepted_at": accepted_at,
         "coverage": coverage,
         "previous_coverage": gate_coverage(compiled_before),
+        "coverage_accepted_at": coverage_acceptance(ctx.service.coverage_decisions(official_id), merged_ids),
         "kind_changes": changes,
     }, gate_settings)
     outcome.gate = gate
