@@ -558,6 +558,7 @@
    "slug": "bb-raceway",
    "bundle": {
     "file": "tracks/bb-raceway.json",
+    "corrections": "corrections/bb-raceway.json",
     "track": "BB Raceway",
     "points": 3517,
     "manual_points": 3479,
