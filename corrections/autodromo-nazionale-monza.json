@@ -1,0 +1,15 @@
+{
+"format":"gt7-datalogger-track-corrections",
+"version":1,
+"official_id":"e6817f",
+"track":"Autodromo Nazionale Monza",
+"compile":{"smooth_borders":null},
+"exclude":[],
+"draw":[
+  {"x":-405.162,"z":-512.788,"y":null,"hx":-0.98627,"hz":0.16512,"side":"L","kind":"edge","votes":{"edge":{"drawn-81714d7f":[1,1]}},"run":1,"tw":null},
+  {"x":-404.18,"z":-512.973,"y":null,"hx":-0.979,"hz":0.20388,"side":"L","kind":"edge","votes":{"edge":{"drawn-81714d7f":[1,1]}},"run":1,"tw":null},
+  {"x":-403.205,"z":-513.194,"y":null,"hx":-0.97097,"hz":0.23921,"side":"L","kind":"edge","votes":{"edge":{"drawn-81714d7f":[1,1]}},"run":1,"tw":null},
+  {"x":-402.239,"z":-513.456,"y":null,"hx":-0.9587,"hz":0.28441,"side":"L","kind":"edge","votes":{"edge":{"drawn-81714d7f":[1,1]}},"run":1,"tw":null},
+  {"x":-401.294,"z":-513.781,"y":null,"hx":-0.9258,"hz":0.37802,"side":"L","kind":"edge","votes":{"edge":{"drawn-81714d7f":[1,1]}},"run":1,"tw":null}
+]
+}
