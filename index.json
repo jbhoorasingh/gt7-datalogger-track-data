@@ -5,7 +5,7 @@
  "counts": {
   "configurations": 121,
   "surveyed": 26,
-  "points": 134073,
+  "points": 134418,
   "corners_labelled": 139,
   "corrected": 7
  },
@@ -335,17 +335,17 @@
    "bundle": {
     "file": "tracks/autodromo-nazionale-monza.json",
     "track": "Autodromo Nazionale Monza (Full Course)",
-    "points": 9192,
+    "points": 9537,
     "manual_points": 6076,
     "elevation_pct": 100.0,
-    "runs": 3,
-    "sources": 1,
-    "finish_crossings": 5,
+    "runs": 4,
+    "sources": 2,
+    "finish_crossings": 6,
     "corners": 11,
     "sections": 2,
     "sectors": 0,
-    "updated_at": "2026-09-15T22:22:00.642013+00:00",
-    "bytes": 1498528
+    "updated_at": "2026-09-29T14:25:50.339586+00:00",
+    "bytes": 1558345
    }
   },
   {
