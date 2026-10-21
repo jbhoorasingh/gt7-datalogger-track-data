@@ -3,7 +3,7 @@
  "version": 1,
  "bundle_format_version": 5,
  "counts": {
-  "configurations": 121,
+  "configurations": 122,
   "surveyed": 27,
   "points": 135705,
   "corners_labelled": 139,
@@ -1751,6 +1751,20 @@
    "type": "original",
    "reverse": false,
    "slug": "special-stage-route-x",
+   "bundle": null
+  },
+  {
+   "official_id": "4bf61b",
+   "track": "Sportsland SUGO",
+   "layout": "Full Course",
+   "official_name": "SUGO International Racing Course",
+   "country": "Japan",
+   "turns": 13,
+   "length_m": 3586,
+   "elevation_m": 69.8,
+   "type": "real",
+   "reverse": false,
+   "slug": "sugo-international-racing-course",
    "bundle": null
   },
   {
