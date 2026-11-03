@@ -7,7 +7,7 @@
   "surveyed": 27,
   "points": 135705,
   "corners_labelled": 139,
-  "corrected": 8
+  "corrected": 9
  },
  "unmatched_bundles": [],
  "configurations": [
@@ -1431,6 +1431,7 @@
    "slug": "mount-panorama-motor-racing-circuit",
    "bundle": {
     "file": "tracks/mount-panorama-motor-racing-circuit.json",
+    "corrections": "corrections/mount-panorama-motor-racing-circuit.json",
     "track": "Mount Panorama Motor Racing Circuit",
     "points": 6642,
     "manual_points": 2535,
