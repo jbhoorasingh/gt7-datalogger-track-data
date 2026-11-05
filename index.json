@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 27,
-  "points": 135705,
+  "surveyed": 28,
+  "points": 135839,
   "corners_labelled": 139,
   "corrected": 9
  },
@@ -1023,7 +1023,21 @@
    "type": "original",
    "reverse": true,
    "slug": "dragon-trail-gardens-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/dragon-trail-gardens-reverse.json",
+    "track": "Dragon Trail - Gardens (Reverse)",
+    "points": 134,
+    "manual_points": 0,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 0,
+    "updated_at": "2026-10-29T01:41:22.560692+00:00",
+    "bytes": 21676
+   }
   },
   {
    "official_id": "8d429d",
