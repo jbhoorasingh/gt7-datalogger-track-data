@@ -30,10 +30,36 @@ jobs:
       - name: Validate every bundle
         run: python tools/validate.py
 
+      # Two questions about the two derived files, and which is asked depends
+      # on what started the run.
+      #
+      # A pull request no longer carries index.json or signatures.json: they
+      # are rebuilt on main after every merge (reindex.yml, and the sync job
+      # after its own), so that no two pull requests share a file. The copies
+      # a pull request is checked out with are therefore main's, and on main
+      # itself they are one merge behind for the few seconds until that
+      # rebuild is committed. "Does the committed copy match" would fail every
+      # pull request that adds a bundle and turn every merge red for nothing.
+      # So a pull request and a push are asked only whether both files CAN be
+      # built from this tree, which is what a contribution can still break.
+      - name: index.json can be built from the bundles
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: python tools/build_index.py --verify
+
+      - name: signatures.json can be built from the bundles and the vendored captures
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: python tools/build_signatures.py --verify
+
+      # The strict question is kept for the weekly run and for one asked for
+      # by hand. It is the backstop: a rebuild that stopped happening leaves
+      # main's copies stale with nothing else to say so, and this is what
+      # would. `gh workflow run reindex.yml` mends it.
       - name: index.json must match the bundles
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: python tools/build_index.py --check
 
       - name: signatures.json must match the bundles and the vendored captures
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: python tools/build_signatures.py --check
 
       - name: Test the bundle format's authored records

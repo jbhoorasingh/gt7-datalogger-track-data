@@ -42,6 +42,8 @@ python tools/pull_from_app.py http://gt7.local:8000 --only deep-forest
 # ...or start from a file you exported:
 python tools/add_bundle.py ~/Downloads/deep-forest-raceway.json
 
+# To look at it: these make the local tools and the site list your bundle.
+# What they write stays out of the pull request — see below.
 python tools/build_index.py
 python tools/build_signatures.py
 ```
@@ -53,7 +55,18 @@ already here, the two are **merged**.
 `pull_from_app.py` only ever reads your app. It is the mirror of
 `import_into_app.py`, which is the one that writes to it.
 
-Then open a pull request.
+Then open a pull request with the bundle, and nothing else.
+
+Leave `index.json` and `signatures.json` out of it. Both are built from the
+bundles, and `main` rebuilds them itself after every merge
+(`.github/workflows/reindex.yml`). They used to travel with every pull request,
+and the totals at the top of each are a few lines every one of them rewrote —
+so the moment one pull request was merged, every other open one conflicted.
+If you rebuilt them to look, put them back before you commit:
+
+```bash
+git restore --staged --worktree index.json signatures.json
+```
 
 ## 4. What CI checks
 
@@ -66,9 +79,13 @@ Then open a pull request.
 - It is format v5 and names a configuration that exists in the catalog.
 - The filename matches that configuration.
 - The file is in canonical form — `python tools/validate.py --fix` writes it.
-- `index.json` matches the bundles — `python tools/build_index.py` rebuilds it.
-- `signatures.json` matches the bundles and `vendor/circuits.json` —
-  `python tools/build_signatures.py` rebuilds it. A new bundle changes it:
+- `index.json` can be built from the bundles —
+  `python tools/build_index.py --verify` asks, and writes nothing. Not that the
+  committed copy matches them: your pull request does not carry it, so the one
+  in your checkout is `main`'s, and CI asks that of `main`, weekly.
+- `signatures.json` can be built from the bundles and `vendor/circuits.json` —
+  `python tools/build_signatures.py --verify`, likewise. A new bundle changes
+  it, on `main`, once yours is merged:
   a surveyed configuration outranks the recorded lap that stood in for it, so
   the row's bounding box becomes the road you surveyed rather than one line
   through it. Its `path` is still borrowed from the recording — a bundle is
@@ -112,13 +129,22 @@ rewriting the same records. Do not hand-resolve it. Rebase and re-run:
 
 ```bash
 python tools/add_bundle.py <your export>   # merges into whatever is now on main
-python tools/build_index.py
-python tools/build_signatures.py
 ```
 
 The merge is defined by the format (each source's own highest run count wins,
 hand-marked kinds outrank inferred ones) and it is idempotent, so replaying
 your export onto the updated file is always correct and never double-counts.
+
+Two pull requests for *different* tracks share no file and cannot conflict —
+provided neither carries `index.json` or `signatures.json`. If yours does, and
+it conflicts in those two files, do not resolve them by hand either. Take
+`main`'s copies and commit; `main` rebuilds both once you are merged:
+
+```bash
+git fetch origin
+git checkout origin/main -- index.json signatures.json
+git commit -m "Leave index.json and signatures.json to main"
+```
 
 ## Updating a track that is already here
 
@@ -131,8 +157,8 @@ none. The round trip is the intended workflow:
 1. Pull the circuit's shared bundle in the app (Tracks → **Shared bundles**),
    or import it from the pack.
 2. Drive — more laps, missing borders, corner labels.
-3. `python tools/pull_from_app.py http://gt7.local:8000 --only <slug>`, rebuild
-   the index, open a pull request. The diff is only the metres and votes you
+3. `python tools/pull_from_app.py http://gt7.local:8000 --only <slug>`, open a
+   pull request with that one file. The diff is only the metres and votes you
    added, which is what makes it reviewable.
 
 ## Drawn metres
@@ -163,7 +189,8 @@ because both of its ends are real measurements.
 Run the editor from `gt7-tracks gui` and **Save into tracks/** merges your
 corrections straight in, on the same terms as `add_bundle.py` — there is no
 download-then-run-a-script step. Rebuild the index and the signatures
-afterwards, as for any other change.
+afterwards if you want the local tools to show the result; as for any other
+change, what that writes stays out of the pull request.
 
 ## Reviewing
 

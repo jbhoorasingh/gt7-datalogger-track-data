@@ -18,8 +18,12 @@
 #
 # Secrets: GT7_SYNC_SERVICE_KEY is the service key (rotate it from the
 # service's Admin → Settings). GITHUB_TOKEN opens and merges the pull
-# requests. A merge made with GITHUB_TOKEN starts no workflow, so the job asks
-# pack.yml and pages.yml to republish by name afterwards.
+# requests, and pushes the one commit described next. A merge made with
+# GITHUB_TOKEN starts no workflow, so after each of its own the job does what
+# a person's merge would have started: it rebuilds main's index.json and
+# signatures.json and pushes them (reindex.yml's work — no pull request
+# carries those two files), then asks pack.yml and pages.yml to republish by
+# name.
 name: sync
 
 on:
@@ -30,11 +34,20 @@ on:
   # When a PERSON merges or closes one of this job's pull requests. Nothing
   # else tells the sync service: left to the nightly run, a circuit merged at
   # lunchtime reads "awaiting review" until two in the morning, with its edit
-  # unpublished — and every other open pull request has just gone stale, since
-  # each one rewrites index.json. So the job runs now, for everything: it
-  # publishes what landed, settles its row, and rebuilds the rest on the new
-  # main. (A merge the job makes itself starts nothing: GITHUB_TOKEN's events
-  # never do, which is also why this cannot loop.)
+  # unpublished. So the job runs now, for everything: it publishes what
+  # landed, settles its row, and rebuilds the rest on the new main.
+  #
+  # There used to be a second reason. Every pull request rewrote index.json,
+  # so a merge left every other open one conflicting until this run rebuilt
+  # it — and a merge the job made later in the same run stranded them again
+  # (2026-11-05, #98 and #107 behind #117). A pull request carries only its
+  # own circuit's file now, so nothing landing for another circuit can
+  # conflict it, and index.json and signatures.json are rebuilt on main after
+  # the merge: by reindex.yml, which the same merge starts, and by this run
+  # before it touches a circuit, whichever gets there first.
+  #
+  # (A merge the job makes itself starts nothing: GITHUB_TOKEN's events never
+  # do, which is also why this cannot loop.)
   pull_request:
     types: [closed]
   workflow_dispatch:

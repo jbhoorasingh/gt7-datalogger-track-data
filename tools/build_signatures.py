@@ -31,7 +31,15 @@ Two sources, in order of preference:
 Like index.json it carries no timestamp and is a pure function of its inputs,
 so CI can regenerate it and fail the build when the committed copy is stale.
 
-    python tools/build_signatures.py [--check]
+    python tools/build_signatures.py [--check | --verify]
+
+`--check` asks whether the committed copy matches. `--verify` asks only
+whether the file can be built, and writes nothing: a pull request no longer
+carries signatures.json — it is rebuilt on `main` after every merge, so that
+two pull requests share no file and cannot conflict — and on a branch the
+question is therefore "does it build", not "does the committed copy match".
+An unmapped capture, or a bundle whose official id the catalog does not hold,
+fails it exactly as it fails a build.
 """
 
 from __future__ import annotations
@@ -546,6 +554,11 @@ def main(argv: list[str]) -> int:
             print("\nsignatures.json is stale — run: python tools/build_signatures.py")
             return 1
         print("\nsignatures.json is up to date")
+        return 0
+    if "--verify" in argv:
+        # Built and reported exactly as it would be written, and not written:
+        # anything that would have failed the build has failed by now.
+        print("\nsignatures.json can be built from this tree")
         return 0
     SIGNATURES.write_text(text, encoding="utf-8")
     return 0

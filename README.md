@@ -100,7 +100,10 @@ The options, which are the same on the script:
 
 - `build-index`, `build-signatures`, `vendor-captures` take `--check` — compare
   against what is committed and exit non-zero if it is stale, writing nothing.
-  This is what CI runs.
+  CI runs this weekly. Of a pull request and of a push it asks the two builders
+  only whether their file *can* be built (`--verify`, on the scripts
+  themselves), because a pull request does not carry `index.json` or
+  `signatures.json` — see "Surveys from the sync service" below for why.
 - `validate` takes `--fix`, which rewrites bundles into canonical form.
 - `pull-from-app` takes `--list`, which shows what the app has and writes
   nothing; `--only SLUG`; and `--token TOKEN`. `BASE` defaults to
@@ -176,6 +179,10 @@ python tools/build_index.py
 python tools/build_signatures.py
 ```
 
+The last two are for looking: they make the local tools and the site list your
+bundle. Leave `index.json` and `signatures.json` out of the pull request —
+`main` rebuilds both itself after every merge.
+
 Your bundle must name the official GT7 configuration it belongs to — confirm
 the layout in the app's Tracks view before exporting. Without it there is no
 reliable way to file the bundle, because a typed track name is not an
@@ -241,16 +248,40 @@ vendor refresh does. Otherwise the pull request waits for a person, and the
 service's admin panel shows why, criterion by criterion.
 
 It also runs whenever a **person** merges or closes one of its own pull requests
-(`sync/…`, `edit/…`), and for everything, not just that circuit. Two reasons,
-and both were found the hard way. Nothing else tells the sync service that
-somebody pressed Merge, so left to the nightly run a circuit merged at lunchtime
-reads "awaiting review" until two in the morning with its edit unpublished. And
-every pull request here rewrites `index.json` — the grand total at the top is
-one line — so the moment one lands, every other open one conflicts. The run
-publishes what landed, settles its row, and rebuilds the rest on the new
-`main`. Only this repository's own branches start it, never a fork's, and a
-merge the job makes itself starts nothing (`GITHUB_TOKEN`'s events never do),
-which is also why it cannot loop.
+(`sync/…`, `edit/…`), and for everything, not just that circuit. Nothing else
+tells the sync service that somebody pressed Merge, so left to the nightly run
+a circuit merged at lunchtime reads "awaiting review" until two in the morning
+with its edit unpublished. The run publishes what landed, settles its row, and
+rebuilds the rest on the new `main`. Only this repository's own branches start
+it, never a fork's, and a merge the job makes itself starts nothing
+(`GITHUB_TOKEN`'s events never do), which is also why it cannot loop.
+
+A pull request carries only what it is about: `sync/<slug>` commits
+`tracks/<slug>.json`, `edit/<slug>` commits `corrections/<slug>.json`, and
+neither commits `index.json` or `signatures.json`. They used to, and that was
+found the hard way. The totals at the top of those two files are a few lines
+every pull request rewrote, so the moment one landed, every other open one
+read "This branch has conflicts that must be resolved". The job rebuilt the
+open ones on each run, and that did not hold: the waiting pull requests hold
+the oldest uploads, so they are rebuilt first, and a newer upload merged later
+in the same run stranded them again (2026-11-05: #98 and #107 rebuilt at 20:37
+and 20:38 UTC, #117 merged at 20:38:19, both conflicted once more). Somebody
+merging two pull requests in a row on GitHub met the same wall with no job in
+between.
+
+So the two files are rebuilt **on `main`**, after every merge, by whoever can.
+A person's merge is a push, and `.github/workflows/reindex.yml` runs on every
+push to `main`: it rebuilds both and commits them when they changed. A merge
+the job makes starts no workflow, so the job does the same itself, at the start
+of every run and straight after each merge. Both builders are pure functions of
+the tree, so it does not matter which of the two gets there first, and a second
+rebuild is no commit at all. For the few seconds in between, `main`'s copies
+are one merge behind, and nothing that runs in CI trusts them: the pack and the
+site build their own from the bundles they publish, and `validate` asks of a
+pull request and of a push only that both files can be built, keeping "the
+committed copy matches" for its weekly run. (The vendor refresh's pull request
+is the one exception: what the new captures do to `signatures.json` is what it
+is about, so it goes on carrying that file.)
 
 Two things it never turns into a pull request, because a pull request would
 be the wrong answer: a survey whose confirmed layout disagrees with what
@@ -361,9 +392,12 @@ source id to be hex, and refuses a bundle carrying `drawn-524eff6e` whole.
 The first two edits ever merged put their drawn records in their bundles:
 "the app still accepts what we ship" failed, and the pack — which only ran
 this repository's validator — shipped two circuits no app would load. So an
-edit never touches `tracks/` now. That also means it never touches
-`index.json`, whose grand total is one line that any two pull requests adding
-a record used to fight over: two edits cannot collide in a file neither writes.
+edit never touches `tracks/` now. Nor does its pull request touch
+`index.json`, whose totals any two pull requests used to fight over. For a
+while it did — `index.json` names each circuit's corrections file, so an edit
+that gave a circuit its first one rewrote it — and no pull request does any
+more: `index.json` learns of the file when it is rebuilt on `main` after the
+merge, and two edits cannot collide in a file neither writes.
 Both the job, before it calls a pull request clean, and the pack, before it
 ships, now ask the app (`tools/check_app_agrees.py`).
 
@@ -383,7 +417,8 @@ and sends what it would publish to the service, so whoever reviews it can look
 at it against what is published now. An edit may carry votes only under a
 `drawn-` source, and is refused otherwise: the editor draws, it does not
 survey. A datalogger applies the same file: `index.json` names each
-circuit's corrections beside its bundle, the app's pull fetches both and
+circuit's corrections beside its bundle (from the rebuild that follows the
+edit's merge, as above), the app's pull fetches both and
 compiles its map from what is left, and the pack carries `corrections/` for
 its import script to send after each bundle — so the road a datalogger draws
 and judges laps against is the road the site shows, and taking an area out

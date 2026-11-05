@@ -22,6 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # What is published is built from the bundles it is published with,
+      # whatever the committed copies say at this commit. They are rebuilt on
+      # main after every merge (reindex.yml) and no pull request carries them,
+      # so at the commit a merge makes — the very one this runs on — they are
+      # one merge behind, and copied as they stand the site would serve the
+      # index from before the merge beside the bundles from after it. That is
+      # not cosmetic: a datalogger pulls from this site, and finds a circuit's
+      # bundle and its corrections by what index.json names.
+      - name: Build index.json and signatures.json from the bundles being published
+        run: |
+          python tools/build_index.py
+          python tools/build_signatures.py
+
       - name: Assemble _site
         run: |
           set -euo pipefail

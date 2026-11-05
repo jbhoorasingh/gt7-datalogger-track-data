@@ -23,6 +23,21 @@ everything it contributes — the merge produces no diff — which is true the r
 after its pull request lands, whether the gate merged it or a person did.
 Nothing has to remember which upload went into which pull request.
 
+A pull request carries only what it is about: `sync/<slug>` commits
+`tracks/<slug>.json` and nothing else. It used to commit `index.json` and
+`signatures.json` too, rebuilt on the branch, and the totals at the top of
+those files are a few lines every pull request rewrote — so the moment one
+landed, every other open one conflicted. Rebuilding the open branches at the
+start of each circuit's turn did not save them: the waiting pull requests hold
+the oldest uploads, so they are rebuilt first, and a newer upload auto-merged
+later in the same run stranded them again (2026-11-05: #98 and #107 rebuilt at
+20:37 and 20:38 UTC, #117 merged at 20:38:19, both conflicted once more). So
+the two derived files are rebuilt on `main` itself instead — by this job at the
+start of every run and straight after each merge it makes, because a merge
+made with `GITHUB_TOKEN` starts no workflow, and by `reindex.yml` on every push
+to `main`, which is what a person's merge is (see `reindex_main`). Two pull
+requests for different circuits then share no file and cannot conflict.
+
 Two questions are held for a person rather than turned into a pull request,
 because a pull request would be the wrong answer to them: a survey whose
 confirmed layout disagrees with what `signatures.json` identifies (filing it
@@ -122,6 +137,18 @@ LINE_POINTS = 200
 
 # Text the service shows the contributor. Written for them, not for a log.
 REASON_AWAITING = "waiting for a person to review the pull request"
+
+# The two files that follow the bundles. Committed on `main` and nowhere else:
+# see `reindex_main`.
+DERIVED_FILES = ["index.json", "signatures.json"]
+# Everything the two builders read to make them.
+DERIVED_INPUTS = ["catalog", "corrections", "tracks", "vendor"]
+# How many times a rebuild of them is tried when `main` moves underneath it.
+REINDEX_ATTEMPTS = 3
+# Said in every pull request's body, for whoever expects the two files in the
+# diff and wonders where they went.
+DERIVED_NOTE = ("`index.json` and `signatures.json` are not in this pull request: they are rebuilt on "
+                "`main` once it merges, so that no two pull requests share a file.")
 
 
 def now_iso() -> str:
@@ -851,16 +878,29 @@ class Repository:
         return run.returncode == 0, (run.stdout + run.stderr).strip()
 
     def rebuild_derived(self) -> list[tuple[str, bool, str]]:
-        """index.json and signatures.json follow the bundles; both are committed."""
+        """index.json and signatures.json follow the bundles; both are committed
+        — on `main`, by `reindex_main`, and no longer on a pull request's
+        branch, where they were the one thing every pull request had in common
+        and so the one thing every pull request conflicted over."""
         return [("index.json rebuilt", *self._tool("build_index.py")),
                 ("signatures.json rebuilt", *self._tool("build_signatures.py"))]
 
     def checks(self) -> list[tuple[str, bool, str]]:
         """What validate.yml would ask, asked here — a pull request opened with
-        GITHUB_TOKEN does not start workflows, so the answers go in the body."""
+        GITHUB_TOKEN does not start workflows, so the answers go in the body.
+
+        Of the two derived files it asks whether they can be built, not
+        whether the committed copies match. A branch does not carry them, so
+        the copies in this checkout are main's and say nothing about the
+        branch; what a branch can still do is break the build, and a pull
+        request that would is a draft. `--verify` writes nothing, which
+        matters as much as what it answers: a rebuilt index.json left in the
+        working tree makes the next circuit's `git checkout -B` refuse to go,
+        the moment main's copy has moved.
+        """
         return [("every bundle is valid", *self._tool("validate.py")),
-                ("index.json matches the bundles", *self._tool("build_index.py", "--check")),
-                ("signatures.json matches its inputs", *self._tool("build_signatures.py", "--check")),
+                ("index.json builds from these bundles", *self._tool("build_index.py", "--verify")),
+                ("signatures.json builds from these bundles", *self._tool("build_signatures.py", "--verify")),
                 # The bundle is what the datalogger imports, and this job
                 # already has the app, for its compiler. validate.py is this
                 # repository's opinion of a bundle; this is the app's, and the
@@ -890,14 +930,46 @@ class Git:
         self.run("fetch", remote, ref)
         self.run("checkout", "-B", branch, base)
 
+    def checkout_detached(self, base: str = "origin/main") -> str:
+        """The base as the remote has it now, checked out on no branch; the
+        commit that is.
+
+        Detached on purpose. The job never creates or moves a local `main`: a
+        developer may run it from their own checkout, and their `main` is
+        theirs to move.
+        """
+        remote, _, ref = base.partition("/")
+        self.run("fetch", remote, ref)
+        self.run("checkout", "-q", "--detach", base)
+        return self.run("rev-parse", "HEAD")
+
+    def differs(self, paths: list[str]) -> str:
+        """What under these paths is not as the commit checked out has it —
+        changed, staged or untracked — in `git status`'s words; nothing when
+        they match."""
+        return self.run("status", "--porcelain", "--", *paths)
+
+    def restore(self, paths: list[str], check: bool = True) -> None:
+        """Put these files back as the commit checked out has them — these
+        and no others, staged or not. Never a `reset --hard`: whatever else
+        is in this working tree is not this job's to throw away."""
+        self.run("checkout", "HEAD", "--", *paths, check=check)
+
     def commit(self, paths: list[str], message: str) -> bool:
-        """Stage and commit; False when the paths hold nothing new."""
+        """Stage and commit these paths and no others; False when they hold
+        nothing new.
+
+        Whatever else happens to be staged stays staged and stays out of the
+        commit. A pull request carries one file, and the commit that rebuilds
+        main's derived files carries those two; neither is the place for
+        something a failed step, or a developer, left in the index.
+        """
         self.run("add", "--", *paths)
-        staged = self.runner(["git", "diff", "--cached", "--quiet"], cwd=self.root,
+        staged = self.runner(["git", "diff", "--cached", "--quiet", "--", *paths], cwd=self.root,
                              capture_output=True, text=True)
         if staged.returncode == 0:
             return False
-        self.run("commit", "-q", "-m", message)
+        self.run("commit", "-q", "-m", message, "--", *paths)
         return True
 
     def commit_all(self, paths: list[str], message: str) -> bool:
@@ -913,12 +985,16 @@ class Git:
         """Whether the branch on the remote already IS what was just committed
         here: the same tree, on top of today's base.
 
-        Both halves matter. The same tree on an old base is a pull request
-        that conflicts the moment anything else lands — every pull request
-        here rewrites index.json — and a new base with a different tree is a
-        pull request that says something else. Anything that cannot be
-        established is "no": pushing again is harmless, and not pushing a
-        branch that needed it is how a pull request stays broken.
+        Both halves matter. The same tree on an old base was, when every pull
+        request here rewrote index.json, a pull request that conflicted the
+        moment anything else landed. A branch carries only its own circuit's
+        file now and no longer conflicts over that, but it is still rebuilt
+        on today's base: what it would publish — the candidate an
+        administrator decides from — is measured against main, and should be
+        measured against the main that is there. And a new base with a
+        different tree is a pull request that says something else. Anything
+        that cannot be established is "no": pushing again is harmless, and not
+        pushing a branch that needed it is how a pull request stays broken.
         """
         if self.runner(["git", "fetch", "-q", remote, branch], cwd=self.root,
                        capture_output=True, text=True).returncode != 0:
@@ -932,6 +1008,22 @@ class Git:
 
     def push_force(self, branch: str, remote: str = "origin") -> None:
         self.run("push", "--force", "-q", remote, branch)
+
+    def push_head(self, ref: str = "main", remote: str = "origin") -> tuple[bool, str]:
+        """Push the commit checked out to a branch on the remote; whether it
+        was taken, and git's own words when it was not.
+
+        An ordinary push and never a forced one. `push_force` is for the
+        job's own branches, which nobody else writes to; this is for `main`,
+        where a refusal means somebody else got there first and the answer is
+        to start again from what they left, not to overwrite it.
+        """
+        result = self.runner(["git", "push", remote, f"HEAD:{ref}"], cwd=self.root,
+                             capture_output=True, text=True)
+        # Without git's advice to pull, which is a paragraph and not for a log.
+        words = [line for line in (result.stderr or result.stdout).splitlines()
+                 if line.strip() and not line.startswith("hint:")]
+        return result.returncode == 0, "\n".join(words)
 
     def current_branch(self) -> str:
         return self.run("rev-parse", "--abbrev-ref", "HEAD")
@@ -1054,6 +1146,131 @@ def compile_geometry(doc: dict[str, Any], smooth: bool | None = None) -> dict[st
     return compiler.compile_bundle(doc, smooth=smooth)
 
 
+# ── main's derived files ───────────────────────────────────────────────────
+#
+# index.json and signatures.json are built from the bundles, the catalog and
+# the vendored captures. They are committed all the same, because people, the
+# local tools and the landing page (which prints the totals from main's
+# index.json) read them without building anything — but committed on `main`
+# only. A pull request used to carry its own rebuild of both, and the totals
+# at the top of each are a few lines every one of them rewrote: the moment a
+# pull request landed, every other open one read "This branch has conflicts
+# that must be resolved". Rebuilding the open branches each night did not hold
+# (see the module docstring for the night it visibly failed), and a person
+# merging two pull requests in a row on GitHub met the same wall with no job
+# in between.
+#
+# So a branch carries its circuit's own file, and main's derived files are
+# rebuilt on main after every merge by whoever can. A person's merge is a
+# push, and `reindex.yml` runs on every push to main. This job's merge is made
+# with GITHUB_TOKEN and starts no workflow, so the job does it itself: straight
+# after each merge, and at the start of every run in case a merge reached main
+# and its rebuild did not.
+#
+# Both builders are pure functions of the tree — no timestamp, sorted inputs —
+# so a rebuild here is the rebuild anyone else would have made, two of them
+# racing produce the same commit content, and a second one is a no-op. For the
+# few seconds between a merge and its rebuild main's copies lag; nothing in CI
+# trusts them for that reason, and builds what it needs instead.
+
+
+def reindex_main(ctx: Context, why: str, indent: str = "") -> bool:
+    """Bring main's index.json and signatures.json up to date with main's
+    bundles, and read the signatures back. True when main holds current
+    copies afterwards.
+
+    `origin/main` is checked out detached, the two files are rebuilt, and if
+    they changed they are committed — those two files and nothing else — and
+    pushed with an ordinary push. A refusal because main moved in the
+    meantime means somebody else's merge got there first: it starts again
+    from what they left, `REINDEX_ATTEMPTS` times in all, and never forces.
+    Nothing is built from a checkout that holds a bundle main does not: the
+    files describe what is published, and only that.
+
+    A builder that fails leaves main's copies as they are, in the working
+    tree as well: the two files are put back, because a rebuilt file left
+    lying there would stop the next circuit's checkout the moment main's copy
+    moved, or be swept into somebody's commit.
+
+    `ctx.signatures` is read again whenever the files could be built. It was
+    loaded once, from whatever the checkout held when the job started, and
+    the layout check should read signatures that match main's bundles as they
+    are now — a first survey merged a minute ago included.
+
+    Housekeeping, and it must not fail a night that merged: whatever goes
+    wrong is said in the log and the run goes on. Main's copies are then
+    stale until `reindex.yml` or the next run rebuilds them, which costs a
+    reader of the raw file a stale total and costs the pack and the site
+    nothing, since they build their own.
+    """
+    if ctx.dry_run or ctx.git is None:
+        return False
+
+    def say(line: str) -> None:
+        ctx.log(indent + line)
+
+    try:
+        return _reindex_main(ctx, ctx.git, why, say)
+    except Exception as exc:  # noqa: BLE001 - housekeeping must not fail a night that merged
+        say(f"main's index.json and signatures.json could not be rebuilt {why}: {exc}")
+        return False
+
+
+def _reindex_main(ctx: Context, git: Git, why: str, say: Callable[[str], None]) -> bool:
+    message = ("Rebuild index.json and signatures.json\n\n"
+               f"Made by {WORKFLOW} {why}.\n"
+               "Both files are built from the bundles, and no pull request carries them:\n"
+               "main's copies are rebuilt after every merge instead.")
+    built_on = ""
+    for attempt in range(1, REINDEX_ATTEMPTS + 1):
+        base = git.checkout_detached()
+        if base == built_on:
+            # Refused, and main is where it was: not somebody else's merge,
+            # then, but something a second try would not change.
+            say("main has not moved, so it refused the push for another reason; "
+                "its index.json and signatures.json are left as they are")
+            return False
+        strays = git.differs(DERIVED_INPUTS)
+        if strays:
+            # A rebuild here is main's only while this tree is main's. A
+            # bundle a circuit's turn left half-written, or one a developer
+            # has not committed, would be indexed and pushed as if it were
+            # published.
+            say("this checkout holds more than main does, so main's index.json and signatures.json "
+                f"are not rebuilt from it:\n{strays}")
+            return False
+        try:
+            built = ctx.repo.rebuild_derived()
+            failed = [(name, output) for name, ok, output in built if not ok]
+            if failed:
+                git.restore(DERIVED_FILES)
+                say(f"main's index.json and signatures.json could not be rebuilt {why}; "
+                    "its copies are left as they are")
+                for name, output in failed:
+                    say(f"  {name}: FAIL\n{output}")
+                return False
+            ctx.signatures = ctx.repo.signatures()
+            if not git.commit(DERIVED_FILES, message):
+                say(f"main's index.json and signatures.json are up to date {why}")
+                return True
+        except Exception:
+            # Whatever stopped it, the two files do not stay behind rebuilt.
+            # Quietly: the failure worth reading is the one that got us here.
+            git.restore(DERIVED_FILES, check=False)
+            raise
+        pushed, refusal = git.push_head("main")
+        if pushed:
+            say(f"main's index.json and signatures.json rebuilt {why} "
+                f"({git.run('rev-parse', '--short', 'HEAD')})")
+            return True
+        built_on = base
+        say(f"main did not take the rebuilt index.json and signatures.json "
+            f"(attempt {attempt} of {REINDEX_ATTEMPTS}): {refusal}")
+    say(f"main's index.json and signatures.json could not be pushed in {REINDEX_ATTEMPTS} attempts; "
+        "its copies are stale until the next rebuild")
+    return False
+
+
 # ── one circuit ────────────────────────────────────────────────────────────
 
 
@@ -1070,6 +1287,9 @@ class Context:
     dry_run: bool = False
     report: bool = True
     log: Callable[[str], None] = print
+    # The run the service opened for this one, once it has: sent with every
+    # pull request reported, so the service can say which run it came from.
+    run_id: str = ""
 
 
 @dataclass
@@ -1112,6 +1332,20 @@ def _raise(ctx: Context, outcome: Outcome, **issue: Any) -> None:
         return
     reply = ctx.service.raise_issue(**issue)
     ctx.log(f"  {issue.get('type')} {reply.get('outcome', '?')}: {issue.get('summary')}")
+
+
+def _report_merge_request(ctx: Context, **fields: Any) -> None:
+    """Tell the service about a pull request, and which run it came from.
+
+    The service has always taken `job_run_id` and the job never sent it, so
+    no merge request named its run, and the service's history of a circuit,
+    which finds the runs that touched it through its merge requests, showed
+    none. Left out when there is no run to name — a circuit processed outside
+    `run` — which the service reads as "keep what the row says".
+    """
+    if ctx.run_id:
+        fields["job_run_id"] = ctx.run_id
+    ctx.service.report_merge_request(**fields)
 
 
 def publication_facts(config: dict[str, Any], doc: dict[str, Any], compiled: dict[str, Any],
@@ -1174,6 +1408,8 @@ def pr_body(outcome: Outcome, config: dict[str, Any], uploads: list[dict[str, An
         f"_Opened by `{WORKFLOW}`. Run in this job, not on the pull request: one opened with "
         "`GITHUB_TOKEN` does not start workflows, so `validate` will not run on it by itself. "
         "Pushing any commit of your own to this branch will start it._",
+        "",
+        DERIVED_NOTE,
     ]
     return "\n".join(lines) + "\n"
 
@@ -1370,10 +1606,12 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
         outcome.action = "pull_request"
         return outcome
 
-    # The branch: the bundle, the derived files, the checks, the pull request.
+    # The branch: the bundle, the checks, the pull request. The bundle and
+    # nothing else — index.json and signatures.json follow it on main, once
+    # it is there (see `reindex_main`), and are neither rebuilt nor committed
+    # here.
     ctx.repo.write_bundle(slug, merged)
-    derived = ctx.repo.rebuild_derived()
-    checks = derived + ctx.repo.checks()
+    checks = ctx.repo.checks()
     clean = all(ok for _, ok, _ in checks)
     for name, ok, output in checks:
         if not ok:
@@ -1382,7 +1620,7 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
                f"{config['official_name']} from the sync service\n\n"
                f"Opened by {WORKFLOW}. Which uploads, what changed and how the gate\n"
                f"judged it are in the pull request body.")
-    ctx.git.commit([f"tracks/{slug}.json", "index.json", "signatures.json"], message)
+    ctx.git.commit([f"tracks/{slug}.json"], message)
     ctx.git.push_force(branch)
 
     title = f"Merge {len(docs)} survey upload{'' if len(docs) == 1 else 's'} of {config['official_name']} (sync)"
@@ -1401,14 +1639,22 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
             outcome.auto_merged = True
             outcome.action = "merged"
             ctx.log("  merged")
+            # The merge put the bundle on main and nothing else, so main's
+            # derived files are now one circuit behind, and a merge made
+            # with GITHUB_TOKEN starts no workflow that would mend them.
+            # Mended here, and before the pack and the site are asked for, so
+            # the main they check out already agrees with itself. Both build
+            # their own copies of the two files and do not depend on that; a
+            # person reading main's does.
+            reindex_main(ctx, f"after merging {branch}", indent="  ")
             ctx.forge.workflow_run("pack.yml")
             ctx.forge.workflow_run("pages.yml")
         else:
             ctx.log("  could not merge; left open for a person")
 
     if ctx.report:
-        ctx.service.report_merge_request(
-            official_id=official_id, pr_url=pr_url, branch=branch, accounts=accounts_count,
+        _report_merge_request(
+            ctx, official_id=official_id, pr_url=pr_url, branch=branch, accounts=accounts_count,
             new_metres=new_m, kind_changes=len(changes), gate=gate, status=status)
         if status != "auto_merged":
             # Somebody has to decide about this one, so let them see it.
@@ -1441,9 +1687,14 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
 # source id to be hex, and it refuses a bundle carrying `drawn-524eff6e` whole.
 # The first two edits merged turned main red on "the app still accepts what we
 # ship" and the pack shipped two circuits no app would load. So an edit never
-# touches tracks/ now. It does touch index.json, which names each circuit's
-# corrections file (#101); a waiting edit is rebuilt from main every night, so
-# two of them meeting there settles itself.
+# touches tracks/ now.
+#
+# For a while it did touch index.json, which names each circuit's corrections
+# file (#101), and two edits met there as any two pull requests did; a waiting
+# edit was rebuilt from main every night to settle it. It no longer does. An
+# edit's pull request carries corrections/<slug>.json and nothing else, and
+# index.json learns of a circuit's first corrections file — or of one taken
+# away — when it is rebuilt on main after the merge (see `reindex_main`).
 #
 # Like a survey, an edit enters the shared map only as a merged pull request.
 # Unlike one, it is never merged by a machine: an edit is one person's opinion
@@ -1559,6 +1810,7 @@ def edit_body(config: dict[str, Any], edit: dict[str, Any], doc: dict[str, Any],
               for c in gate["criteria"]]
     lines += ["", "## Checks", ""]
     lines += [f"- {'✅' if ok else '❌'} {name}" for name, ok, _ in checks]
+    lines += ["", DERIVED_NOTE]
     lines += ["", f"Edit `{edit['id']}`. What this would publish is on the service: Admin → Merge → **map**."]
     return "\n".join(lines) + "\n"
 
@@ -1632,10 +1884,15 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
         if not still_open:
             return finish("closed", "closed", "its pull request was closed without being merged")
         # Still open, so it is rebuilt from main like any survey's pull request
-        # is every night — and has to be. Every pull request here rewrites
-        # index.json, so the moment another one lands this one conflicts, and
-        # a pull request nobody rebuilds stays unmergeable for good. Two edits
+        # is every night. It had to be, when every pull request here rewrote
+        # index.json: the moment another one landed this one conflicted, and a
+        # pull request nobody rebuilt stayed unmergeable for good. Two edits
         # were merged in production and the third was left exactly like that.
+        # A pull request carries only its own circuit's file now, so nothing
+        # landing for another circuit can conflict it. It is rebuilt all the
+        # same: what it would publish is measured against main, and when main
+        # has moved the person deciding should see it against the main that
+        # is there.
 
     if doc["base"] != text_digest(current_text):
         return finish("stale", "stale", "the circuit's corrections changed after this edit was started; "
@@ -1673,14 +1930,18 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
         outcome.action = "pull_request"
         return outcome
 
+    # The corrections and nothing else: not the bundle, which an edit never
+    # changes, and not index.json, which names the file and is rebuilt on
+    # main once the edit is there. `commit_all` because the one file may be
+    # one the edit takes away.
     ctx.repo.write_corrections(slug, wanted)
-    checks = ctx.repo.rebuild_derived() + ctx.repo.checks()
+    checks = ctx.repo.checks()
     clean = all(ok for _, ok, _ in checks)
     for name, ok, output in checks:
         if not ok:
             ctx.log(f"  {name}: FAIL\n{output}")
     ctx.git.commit_all(
-        [f"tracks/{slug}.json", f"{corrections_format.DIRECTORY}/{slug}.json", "index.json", "signatures.json"],
+        [f"{corrections_format.DIRECTORY}/{slug}.json"],
         f"Edit {config['official_name']} from the sync service's track editor\n\n{doc['note']}\n\n"
         f"Opened by {WORKFLOW} for edit {edit_id}.")
     if waiting and ctx.git.remote_is_current(branch):
@@ -1703,8 +1964,8 @@ def process_edit(ctx: Context, edit: dict[str, Any]) -> EditOutcome:
     ctx.log(f"  pull request: {pr_url}" + ("" if clean else " (a check failed; left as a draft)"))
 
     if ctx.report:
-        ctx.service.report_merge_request(
-            official_id=official_id, pr_url=pr_url, branch=branch, accounts=0, new_metres=drawn_m,
+        _report_merge_request(
+            ctx, official_id=official_id, pr_url=pr_url, branch=branch, accounts=0, new_metres=drawn_m,
             kind_changes=len(changes), gate=gate, status="awaiting_review" if clean else "ci_failed")
         send_candidate(ctx, official_id, compiled_after, merged, pr_url)
     return finish("pull_request", "pr_open", "" if clean else "a repository check failed; the pull request is a draft", pr_url)
@@ -1780,6 +2041,14 @@ def run(ctx: Context, official_id: str = "") -> tuple[bool, list[Outcome]]:
     run_id = ""
     if ctx.report and not ctx.dry_run:
         run_id = ctx.service.open_run()
+    ctx.run_id = run_id
+
+    # Before any circuit. A merge may have reached main without its derived
+    # files — a person's, in the moment before `reindex.yml` answers it, or
+    # this job's own, when the rebuild after it did not get through — and the
+    # layout check below reads signatures.json: it should read the one that
+    # matches main's bundles, not the one the checkout happened to hold.
+    reindex_main(ctx, "at the start of a run")
 
     ok = True
     outcomes: list[Outcome] = []
@@ -1841,6 +2110,12 @@ def publish_existing(ctx: Context) -> int:
     catch-up: the policy applied, the compiler run, the geometry stored and
     the facts published for each bundle in tracks/, exactly as a merge would
     have done. Idempotent, and it reports nothing about uploads.
+
+    It does not rebuild main's derived files as a run does. It merges
+    nothing, so it leaves main as it found it; it reads neither index.json
+    nor signatures.json; and it publishes from this checkout as it stands,
+    which a detached checkout of main would quietly change under a person
+    running it from a branch.
     """
     quorum = int((ctx.policy.get("policy") or {}).get("manual_quorum", 2))
     published = 0
