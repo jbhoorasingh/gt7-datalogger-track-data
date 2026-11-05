@@ -1,0 +1,134 @@
+# Keep main's index.json and signatures.json true to main's bundles, as a
+# commit nobody has to remember to make.
+#
+# Both files are derived: tools/build_index.py and tools/build_signatures.py
+# build them from the bundles, the catalog, the corrections and the vendored
+# captures. Every pull request used to carry its own rebuild of them, and the
+# totals at the top of each are a few lines all of them rewrote — so the moment
+# one pull request landed, every other open one read "This branch has conflicts
+# that must be resolved". The sync job rebuilt the open ones on every run, and
+# that did not hold: on 2026-11-05 it rebuilt #98 and #107 at 20:37 and 20:38
+# UTC, merged #117 at 20:38:19, and both conflicted again. A person merging two
+# pull requests in a row on GitHub met the same wall with no job in between.
+#
+# So a pull request carries only what it is about — one circuit's bundle, or
+# one circuit's corrections — and the two files are rebuilt here, on main,
+# after every push to it. A person's merge is a push, and this is what answers
+# it. A merge the sync job makes is not: GITHUB_TOKEN's events start no
+# workflow, so the job rebuilds them itself, at the start of every run and
+# straight after each merge (`reindex_main` in tools/sync_job.py), and its
+# commit reads as this one does.
+#
+# It cannot loop, twice over. The push below is made with GITHUB_TOKEN and so
+# starts nothing, this workflow included. And both builders are pure functions
+# of the tree, with no timestamp: rebuilding files that are already current
+# changes nothing, and nothing changed is no commit at all.
+#
+# Nothing is asked to republish afterwards. pack.yml and pages.yml run on the
+# same push this does, and build both files from the bundles in their own
+# checkout before copying them — so what they publish is already what this
+# commits, whichever of the three finishes first.
+#
+# For the few seconds between a merge and this commit, main's copies are one
+# merge behind. Nothing in CI trusts them for that reason: validate.yml asks on
+# a push only that they can be built, and keeps "the committed copy matches"
+# for its weekly run, which is what would notice this having stopped. Run it by
+# hand with `gh workflow run reindex.yml`.
+#
+# Secrets: GITHUB_TOKEN only, to push that one commit to main.
+name: reindex
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One at a time, and never cut short: a run cancelled between its commit and
+# its push would have rebuilt for nothing. A run left waiting, or replaced in
+# the queue by a newer one, loses nothing by it — each builds from main as it
+# is when it starts, not from the commit that started it.
+concurrency:
+  group: reindex
+  cancel-in-progress: false
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The builders are standard-library Python, so nothing is installed.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild index.json and signatures.json on main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          case "$GITHUB_EVENT_NAME" in
+            push) why="after a push to main" ;;
+            *)    why="when asked by hand" ;;
+          esac
+          message="Rebuild index.json and signatures.json
+
+          Made by .github/workflows/reindex.yml ${why}.
+          Both files are built from the bundles, and no pull request carries them:
+          main's copies are rebuilt after every merge instead."
+
+          built_on=""
+          for attempt in 1 2 3; do
+            # Main as it is now, not the commit that started this run: another
+            # merge may have landed since, and the rebuild has to be of what is
+            # there. Detached, so there is no local branch to fall behind.
+            git fetch --quiet origin main
+            git checkout --quiet --detach FETCH_HEAD
+            base=$(git rev-parse HEAD)
+            if [ "$base" = "$built_on" ]; then
+              # Refused, and main is where it was: not somebody else's merge,
+              # then, but something another try would not change. Main takes
+              # this push because it is not a protected branch; protect it and
+              # this is where that shows.
+              echo "::error::main refused the rebuilt files and has not moved, so another try would change nothing. Its index.json and signatures.json stay one merge behind until this is mended."
+              exit 1
+            fi
+
+            # A builder that fails needs a person: a capture that maps to no
+            # configuration, a bundle whose official id the catalog does not
+            # hold. The run fails with the builder's own words just above, and
+            # nothing is committed or pushed.
+            if ! { python tools/build_index.py && python tools/build_signatures.py; }; then
+              echo "::error::index.json and signatures.json could not be built from main at ${base}. Nothing was pushed; the builder's output above says why."
+              exit 1
+            fi
+
+            # Staged before asking, so that a file main does not hold at all
+            # counts as a change too.
+            git add -- index.json signatures.json
+            if git diff --cached --quiet -- index.json signatures.json; then
+              echo "index.json and signatures.json are up to date at ${base}."
+              exit 0
+            fi
+
+            # Those two files and nothing else.
+            git commit --quiet -m "$message" -- index.json signatures.json
+
+            # An ordinary push, never a forced one. A refusal means somebody
+            # else's merge reached main first, and the answer is to start again
+            # from what they left, not to overwrite it.
+            if git push origin HEAD:main; then
+              echo "main's index.json and signatures.json rebuilt ${why} ($(git rev-parse --short HEAD))."
+              exit 0
+            fi
+            built_on=$base
+            echo "main did not take the rebuilt files (attempt ${attempt} of 3)."
+          done
+
+          echo "::error::main moved under all 3 attempts. Its index.json and signatures.json stay behind until the next push to main, the next sync run, or a run of this workflow by hand."
+          exit 1

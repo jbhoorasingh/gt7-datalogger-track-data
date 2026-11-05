@@ -6,11 +6,14 @@ service's reference implementation (`src/domain/policy.ts` there), because a
 quorum off by one is a wall somebody drew alone published as fact. Layout
 identification is tested against every survey this repository actually holds:
 each must be recognised as the configuration its contributor confirmed, and
-each must be told from its reverse twin. And the whole run is exercised
-against a temporary copy of the repository with a bare git remote, a fake
-service that records what it was told, and a fake forge — so the branch, the
-commit, the pull request, the statuses and the publication are all asserted
-on rather than trusted.
+each must be told from its reverse twin — against signatures built from the
+tree as it stands, not the committed copy, which lags main for a moment after
+every merge. And the whole run is exercised against a temporary copy of the
+repository with a bare git remote, a fake service that records what it was
+told, and a fake forge — so the branch, the commit, the pull request, the
+statuses and the publication are all asserted on rather than trusted. Where a
+test is about what a merge leaves on main, the fake forge's merge is a real
+one: the branch squashed onto the remote's main from a clone of its own.
 
 The end-to-end tests need the datalogger's compiler. They skip without it;
 `.github/workflows/sync.yml` installs it and runs them before every run. To
@@ -664,6 +667,128 @@ class FakeForge:
         self.workflows.append(workflow)
 
 
+# ── the remote, and the people who are not the job ──────────────────────────
+#
+# The job's checkout is the thing under test, so nothing here goes through it.
+# What the remote holds is read from the bare repository, and whatever somebody
+# else does — a person pressing Merge, GitHub squashing a pull request — is
+# done from a clone of their own.
+
+
+def git_in(where: Path, *args: str) -> str:
+    result = subprocess.run(["git", *args], cwd=where, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)}: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout.strip()
+
+
+def head_of(origin: Path, ref: str = "main") -> str:
+    return git_in(origin, "rev-parse", f"refs/heads/{ref}")
+
+
+def carried_by(origin: Path, branch: str) -> list[str]:
+    """The files a branch changes, against the main it was built on: what
+    its pull request carries."""
+    return git_in(origin, "diff", "--name-only", f"main...{branch}").split()
+
+
+def clone_of(origin: Path, ref: str = "main") -> Path:
+    """Somebody else's copy of the repository, with `ref` checked out."""
+    clone = Path(tempfile.mkdtemp(prefix="clone-", dir=origin.parent))
+    subprocess.run(["git", "clone", "-q", "--branch", ref, str(origin), str(clone)],
+                   check=True, capture_output=True)
+    git_in(clone, "config", "user.email", "person@example.invalid")
+    git_in(clone, "config", "user.name", "a person")
+    return clone
+
+
+def derived_files_are_current(origin: Path, ref: str = "main") -> bool:
+    """Whether the remote's index.json and signatures.json are the ones its
+    own bundles build to: both builders' `--check`, in a clean clone."""
+    clone = clone_of(origin, ref)
+    return all(subprocess.run([sys.executable, str(clone / "tools" / script), "--check"], cwd=clone,
+                              capture_output=True).returncode == 0
+               for script in ("build_index.py", "build_signatures.py"))
+
+
+def lands(origin: Path, files: dict[str, str], message: str) -> str:
+    """Somebody else puts a commit on the remote's main, carrying exactly
+    these files; the commit it is.
+
+    What a person pressing Merge leaves there, now that a pull request
+    carries its circuit's file and neither derived one.
+    """
+    clone = clone_of(origin)
+    for name, text in files.items():
+        path = clone / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    git_in(clone, "add", "--", *files)
+    git_in(clone, "commit", "-q", "-m", message)
+    git_in(clone, "push", "-q", "origin", "HEAD:main")
+    return git_in(clone, "rev-parse", "HEAD")
+
+
+class LandingForge(FakeForge):
+    """A forge whose merge is a real one.
+
+    `FakeForge.merge` says yes and moves nothing, which is enough to test
+    what the job reports and not enough to test what a merge leaves behind.
+    This one squashes the branch onto the remote's main and deletes it, as
+    `gh pr merge --squash --delete-branch` does, from a clone of its own:
+    GitHub's side of the merge, and never the job's checkout. It can refuse a
+    branch, which leaves that pull request waiting, and it notes what the
+    remote's main held each time a workflow was asked for.
+    """
+
+    def __init__(self, origin: Path, refuses: tuple[str, ...] = ()) -> None:
+        super().__init__(merges=True)
+        self.origin = origin
+        self.refuses = set(refuses)
+        self.dispatched: list[dict[str, Any]] = []
+
+    def merge(self, branch: str, attempts: int = 5, wait: Any = None) -> bool:
+        if branch in self.refuses:
+            return False
+        number = self.open[branch].rsplit("/", 1)[-1]
+        title = next(title for name, title, _, _ in reversed(self.upserts) if name == branch)
+        clone = clone_of(self.origin)
+        git_in(clone, "merge", "-q", "--squash", f"origin/{branch}")
+        git_in(clone, "commit", "-q", "-m", f"{title} (#{number})")
+        git_in(clone, "push", "-q", "origin", "HEAD:main")
+        git_in(clone, "push", "-q", "origin", "--delete", branch)
+        self.merged.append(branch)
+        self.already_merged[branch] = self.open.pop(branch)
+        return True
+
+    def workflow_run(self, workflow: str) -> None:
+        super().workflow_run(workflow)
+        self.dispatched.append({
+            "workflow": workflow,
+            "main": head_of(self.origin),
+            "subject": git_in(self.origin, "log", "-1", "--format=%s", "refs/heads/main"),
+            "current": derived_files_are_current(self.origin),
+        })
+
+
+class Meddler:
+    """`subprocess.run` for the job's git, with somebody else in the room:
+    whatever `before_push` does is done after the job has fetched and built,
+    and just before its push to main goes out. It is told which push this is,
+    counting from one."""
+
+    def __init__(self, before_push: Any = None) -> None:
+        self.before_push = before_push
+        self.pushes = 0
+
+    def __call__(self, command: list[str], **kwargs: Any) -> Any:
+        if command[:2] == ["git", "push"] and command[-1] == "HEAD:main":
+            self.pushes += 1
+            if self.before_push is not None:
+                self.before_push(self.pushes)
+        return subprocess.run(command, **kwargs)
+
+
 def upload_row(upload_id: str, official_id: str, source_id: str, user_id: str) -> dict[str, Any]:
     return {"id": upload_id, "user_id": user_id, "source_id": source_id, "official_id": official_id,
             "track_name": "Deep Forest Raceway", "version": 4, "edges": 100, "runs": 1, "crossings": 4,
@@ -688,6 +813,157 @@ def survey_subset(doc: dict[str, Any], source: str, every: int = 2) -> dict[str,
     return out
 
 
+def seed_tree(root: Path) -> None:
+    """What the tools need of this repository, copied: the catalog, the
+    vendored captures, the tools themselves, and one survey."""
+    for name in ("catalog", "vendor"):
+        shutil.copytree(ROOT / name, root / name)
+    (root / "tools").mkdir()
+    for script in ROOT.glob("tools/*.py"):
+        shutil.copy(script, root / "tools" / script.name)
+    (root / "tracks").mkdir()
+    shutil.copy(SURVEY, root / "tracks" / SURVEY.name)
+
+
+# ── the two builders, asked only whether they can build ─────────────────────
+
+
+class BuilderVerifyTests(unittest.TestCase):
+    """`--verify`: can the file be built, with nothing written.
+
+    What a branch is asked, now that it carries neither file: the committed
+    copies in its checkout are main's, so "does the committed copy match" is
+    a question about main, and the branch's own question is "does it build".
+    """
+
+    BUILDERS = (("build_index.py", "index.json"), ("build_signatures.py", "signatures.json"))
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="sync-job-builders-"))
+        seed_tree(self.root)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def tool(self, script: str, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([sys.executable, str(self.root / "tools" / script), *args], cwd=self.root,
+                              capture_output=True, text=True)
+
+    def test_verify_says_the_file_can_be_built_and_writes_nothing(self) -> None:
+        for script, name in self.BUILDERS:
+            with self.subTest(script):
+                built = self.root / name
+                # Where there is no file, none appears.
+                result = self.tool(script, "--verify")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip().splitlines()[-1], f"{name} can be built from this tree")
+                self.assertFalse(built.exists())
+                # Where there is a stale one, it is left exactly as it was —
+                # and `--check`, asked of the same tree, still objects to it.
+                built.write_text("stale\n", encoding="utf-8")
+                self.assertEqual(self.tool(script, "--verify").returncode, 0)
+                self.assertEqual(built.read_text(encoding="utf-8"), "stale\n")
+                stale = self.tool(script, "--check")
+                self.assertEqual(stale.returncode, 1)
+                self.assertIn(f"{name} is stale", stale.stdout)
+                self.assertEqual(built.read_text(encoding="utf-8"), "stale\n")
+                # The plain build is what writes, and what `--check` then accepts.
+                self.assertEqual(self.tool(script).returncode, 0)
+                self.assertNotEqual(built.read_text(encoding="utf-8"), "stale\n")
+                self.assertEqual(self.tool(script, "--check").returncode, 0)
+                self.assertEqual(self.tool(script, "--verify").returncode, 0)
+
+    def test_verify_fails_where_a_build_fails_and_only_there(self) -> None:
+        # A bundle filed under an id the catalog does not hold. The index
+        # takes it, and lists it as unmatched; the signatures refuse it.
+        stray = load_survey()
+        stray["meta"]["official"]["official_id"] = "ffffff"
+        (self.root / "tracks" / "stray.json").write_text(sync_job.canonical.dumps(stray), encoding="utf-8")
+        self.assertEqual(self.tool("build_index.py", "--verify").returncode, 0)
+        refused = self.tool("build_signatures.py", "--verify")
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("'ffffff' is not in catalog/tracks.json", refused.stderr)
+        self.assertEqual(self.tool("build_signatures.py").returncode, 1)
+        self.assertFalse((self.root / "signatures.json").exists())
+        (self.root / "tracks" / "stray.json").unlink()
+
+        # A capture that maps to no configuration.
+        captures = self.root / "vendor" / "circuits.json"
+        vendored = json.loads(captures.read_text(encoding="utf-8"))
+        vendored["captures"][0]["variation_name"] = "A Circuit Nobody Has Heard Of"
+        captures.write_text(json.dumps(vendored), encoding="utf-8")
+        unmapped = self.tool("build_signatures.py", "--verify")
+        self.assertEqual(unmapped.returncode, 1)
+        self.assertIn("captures that match no configuration", unmapped.stderr)
+        self.assertEqual(self.tool("build_signatures.py").returncode, 1)
+        self.assertFalse((self.root / "signatures.json").exists())
+        shutil.copy(ROOT / "vendor" / "circuits.json", captures)
+
+        # And a bundle neither can read: an exception is a failure too.
+        (self.root / "tracks" / "broken.json").write_text("{", encoding="utf-8")
+        for script, name in self.BUILDERS:
+            with self.subTest(script):
+                self.assertNotEqual(self.tool(script, "--verify").returncode, 0)
+                self.assertNotEqual(self.tool(script).returncode, 0)
+                self.assertFalse((self.root / name).exists())
+
+
+# ── the job's own commits ───────────────────────────────────────────────────
+
+
+class GitTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="sync-job-git-"))
+        git_in(self.root, "init", "-q", "-b", "main")
+        git_in(self.root, "config", "user.email", "test@example.invalid")
+        git_in(self.root, "config", "user.name", "test")
+        for name in ("bundle.json", "index.json", "notes.md"):
+            (self.root / name).write_text("as committed\n", encoding="utf-8")
+        git_in(self.root, "add", "-A")
+        git_in(self.root, "commit", "-q", "-m", "seed")
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_a_commit_carries_the_paths_it_was_given_and_nothing_else_that_is_staged(self) -> None:
+        # A pull request carries one file. Whatever else is in the index — a
+        # derived file a failed rebuild staged, a developer's work in progress
+        # — is not the job's to sweep into it.
+        for name in ("bundle.json", "index.json", "notes.md"):
+            (self.root / name).write_text("changed\n", encoding="utf-8")
+        git_in(self.root, "add", "index.json")
+        self.assertTrue(Git(self.root).commit(["bundle.json"], "one file"))
+        self.assertEqual(git_in(self.root, "show", "--name-only", "--format=", "HEAD").split(), ["bundle.json"])
+        self.assertEqual(git_in(self.root, "diff", "--cached", "--name-only"), "index.json")
+        self.assertEqual(git_in(self.root, "diff", "--name-only"), "notes.md")
+        # Nothing new in the paths given is no commit, whatever else is staged.
+        self.assertFalse(Git(self.root).commit(["bundle.json"], "nothing"))
+        self.assertEqual(git_in(self.root, "log", "-1", "--format=%s"), "one file")
+
+    def test_restoring_puts_back_the_named_files_staged_or_not_and_no_others(self) -> None:
+        for name in ("bundle.json", "index.json", "notes.md"):
+            (self.root / name).write_text("changed\n", encoding="utf-8")
+        git_in(self.root, "add", "index.json")
+        Git(self.root).restore(["index.json", "bundle.json"])
+        self.assertEqual(git_in(self.root, "diff", "--cached", "--name-only"), "")
+        self.assertEqual(git_in(self.root, "diff", "--name-only"), "notes.md")
+        self.assertEqual((self.root / "notes.md").read_text(encoding="utf-8"), "changed\n")
+
+
+TSUKUBA = "f18da2"
+TSUKUBA_SURVEY = ROOT / "tracks" / "tsukuba-circuit.json"
+NORTHERN_ISLE_SURVEY = ROOT / "tracks" / "northern-isle-speedway.json"
+REBUILT = "Rebuild index.json and signatures.json"
+
+
+def with_holes(doc: dict[str, Any], every: int = 7) -> dict[str, Any]:
+    """The same survey before somebody drove the circuit again: every n-th
+    border record not there yet."""
+    out = copy.deepcopy(doc)
+    out["edges"] = [e for i, e in enumerate(doc["edges"]) if i % every]
+    return out
+
+
 @unittest.skipUnless(HAVE_COMPILER, "needs the datalogger's compiler (app.processing.track_compile)")
 class EndToEndTests(unittest.TestCase):
     """A temporary copy of this repository with a bare origin, one survey in it."""
@@ -696,13 +972,7 @@ class EndToEndTests(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="sync-job-"))
         self.repo = self.tmp / "repo"
         self.repo.mkdir()
-        for name in ("catalog", "vendor"):
-            shutil.copytree(ROOT / name, self.repo / name)
-        (self.repo / "tools").mkdir()
-        for script in ROOT.glob("tools/*.py"):
-            shutil.copy(script, self.repo / "tools" / script.name)
-        (self.repo / "tracks").mkdir()
-        shutil.copy(SURVEY, self.repo / "tracks" / SURVEY.name)
+        seed_tree(self.repo)
         for derived in ("build_index.py", "build_signatures.py"):
             subprocess.run([sys.executable, str(self.repo / "tools" / derived)], cwd=self.repo,
                            check=True, capture_output=True)
@@ -755,10 +1025,20 @@ class EndToEndTests(unittest.TestCase):
         # The branch on origin carries the merged bundle, canonical, with the new installation's votes.
         pushed = self.origin_has(branch, "tracks/deep-forest-raceway.json")
         self.assertIn('"feedbeef"', pushed)
-        # The derived files follow the bundle on the same branch: one more installation.
-        index = json.loads(self.origin_has(branch, "index.json"))
-        row = next(c for c in index["configurations"] if c["official_id"] == DEEP_FOREST)
-        self.assertEqual(row["bundle"]["sources"], len(self.existing["meta"]["source_runs"]) + 1)
+        # The bundle, and nothing else. The derived files used to follow it on
+        # the same branch, and were what every open pull request collided
+        # over; the branch's copies are main's now, as main has them.
+        self.assertEqual(carried_by(self.origin, branch), ["tracks/deep-forest-raceway.json"])
+        for derived in ("index.json", "signatures.json"):
+            self.assertEqual(self.origin_has(branch, derived), self.origin_has("main", derived))
+        # What the body says of them is whether they can be built, and where they went.
+        self.assertIn("- index.json builds from these bundles: pass", body)
+        self.assertIn("- signatures.json builds from these bundles: pass", body)
+        self.assertIn("are not in this pull request", body)
+        # Nothing landed, so main is where it was — the remote's, and the
+        # local branch of that name, which is never the job's to move.
+        self.assertEqual(head_of(self.origin), git_in(self.repo, "rev-parse", "refs/heads/main"))
+        self.assertIn("are up to date at the start of a run", self.log.getvalue())
         # Auto-merge is off: the pull request waits, the upload stays pending, and nothing is published.
         self.assertEqual(service.merge_requests[0]["status"], "awaiting_review")
         self.assertEqual(service.statuses, [])
@@ -984,6 +1264,267 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(subprocess.run(["git", "status", "--porcelain"], cwd=self.repo,
                                         capture_output=True, text=True).stdout, "")
 
+    # ── what a merge leaves on main ──
+    #
+    # A pull request carries its circuit's file and neither derived one, so
+    # main's index.json and signatures.json are rebuilt on main: by the job at
+    # the start of every run and after each merge it makes, and by reindex.yml
+    # on a person's push. These are the job's half of that.
+
+    def publish(self, bundles: dict[str, dict[str, Any]]) -> None:
+        """What the remote's main holds before the test begins, where one
+        survey is not enough: these bundles, by file name, and the derived
+        files that go with them."""
+        clone = clone_of(self.origin)
+        for name, doc in bundles.items():
+            (clone / "tracks" / name).write_text(sync_job.canonical.dumps(doc), encoding="utf-8")
+        for derived in ("build_index.py", "build_signatures.py"):
+            subprocess.run([sys.executable, str(clone / "tools" / derived)], cwd=clone,
+                           check=True, capture_output=True)
+        git_in(clone, "add", "-A")
+        git_in(clone, "commit", "-q", "-m", "seed what is published")
+        git_in(clone, "push", "-q", "origin", "HEAD:main")
+
+    def merged_by_hand(self, bundle: Path = TSUKUBA_SURVEY) -> str:
+        """A person merges a pull request for another circuit: its bundle
+        reaches main, and main's derived files have not heard of it."""
+        landed = lands(self.origin, {f"tracks/{bundle.name}": bundle.read_text(encoding="utf-8")},
+                       f"Merge a survey of {bundle.stem} by hand")
+        self.assertFalse(derived_files_are_current(self.origin))
+        return landed
+
+    def test_a_merge_later_in_the_run_does_not_strand_a_pull_request_left_waiting(self) -> None:
+        # Production, 2026-11-05. #98 and #107 were waiting, so they held the
+        # oldest uploads and were rebuilt first, at 20:37 and 20:38 UTC. #117,
+        # a newer upload and so later in the same run, was merged at 20:38:19
+        # — and both were in conflict again before the run was over, because
+        # all three had rewritten the totals at the top of index.json.
+        #
+        # Two circuits, published with holes in them, and a fresh survey of
+        # each that fills the holes in: both pull requests add metres, as real
+        # ones do, and the metres are the total both of them used to rewrite.
+        tsukuba = load_survey(TSUKUBA_SURVEY)
+        self.publish({TSUKUBA_SURVEY.name: with_holes(tsukuba), SURVEY.name: with_holes(self.existing)})
+        service = FakeService(
+            [upload_row("upl_1", TSUKUBA, "feedbeef", BOB), upload_row("upl_2", DEEP_FOREST, "feedbeef", BOB)],
+            {"upl_1": survey_subset(tsukuba, "feedbeef", every=1),
+             "upl_2": survey_subset(self.existing, "feedbeef", every=1)})
+        service._policy["gate"]["auto_merge"] = True
+        waiting = "sync/tsukuba-circuit"
+        forge = LandingForge(self.origin, refuses=(waiting,))
+        started_from = head_of(self.origin)
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual([o.action for o in outcomes], ["pull_request", "merged"], self.log.getvalue())
+        self.assertEqual(forge.merged, ["sync/deep-forest-raceway"])
+        self.assertEqual([m["status"] for m in service.merge_requests], ["awaiting_review", "auto_merged"])
+        self.assertTrue(all(m["new_metres"] > 0 for m in service.merge_requests), service.merge_requests)
+
+        # The one left waiting was built on the main the run started from,
+        # which the other's merge has since left behind, and it carries its
+        # own circuit's bundle and nothing more.
+        self.assertEqual(git_in(self.origin, "merge-base", "main", waiting), started_from)
+        self.assertNotEqual(head_of(self.origin), started_from)
+        self.assertEqual(carried_by(self.origin, waiting), ["tracks/tsukuba-circuit.json"])
+        # So it still merges, as it stands: nothing to rebuild, nothing to resolve.
+        person = clone_of(self.origin)
+        git_in(person, "merge", "-q", "--no-edit", f"origin/{waiting}")
+        self.assertEqual(git_in(person, "status", "--porcelain"), "")
+        # And main's derived files are the ones its bundles build to: the
+        # merged circuit whole, the waiting one still with its holes.
+        self.assertTrue(derived_files_are_current(self.origin))
+        index = json.loads(self.origin_has("main", "index.json"))
+        row = next(c for c in index["configurations"] if c["official_id"] == DEEP_FOREST)
+        self.assertEqual(row["bundle"]["points"], len(self.existing["edges"]))
+        self.assertEqual(index["counts"]["points"],
+                         len(self.existing["edges"]) + len(with_holes(tsukuba)["edges"]))
+
+    def test_the_pack_and_the_site_are_asked_for_once_main_holds_its_rebuilt_files(self) -> None:
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        service._policy["gate"]["auto_merge"] = True
+        forge = LandingForge(self.origin)
+        seed = head_of(self.origin)
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "merged", self.log.getvalue())
+        # Two commits reached main: the squashed pull request, then the rebuild.
+        squash, rebuild = git_in(self.origin, "rev-list", "--reverse", f"{seed}..main").split()
+        self.assertEqual(git_in(self.origin, "show", "--name-only", "--format=", squash).split(),
+                         ["tracks/deep-forest-raceway.json"])
+        self.assertEqual(git_in(self.origin, "log", "-1", "--format=%s", rebuild), REBUILT)
+        self.assertIn("after merging sync/deep-forest-raceway",
+                      git_in(self.origin, "log", "-1", "--format=%b", rebuild))
+        # Only what the merge made stale: the index's row for the circuit.
+        # Its box did not move, so its signature did not either.
+        self.assertEqual(git_in(self.origin, "show", "--name-only", "--format=", rebuild).split(), ["index.json"])
+        # Both workflows were asked for with that rebuild already on main.
+        self.assertEqual([d["workflow"] for d in forge.dispatched], ["pack.yml", "pages.yml"])
+        for dispatch in forge.dispatched:
+            self.assertEqual((dispatch["main"], dispatch["subject"]), (rebuild, REBUILT))
+            self.assertTrue(dispatch["current"])
+        # The branch went with the merge, and the local `main` stayed where it
+        # was: the rebuild is made on a detached checkout and pushed from it.
+        self.assertEqual(self.origin_has("sync/deep-forest-raceway", "index.json"), "")
+        self.assertEqual(git_in(self.repo, "rev-parse", "refs/heads/main"), seed)
+        self.assertEqual(git_in(self.repo, "status", "--porcelain"), "")
+
+    def test_the_start_of_a_run_mends_a_main_whose_derived_files_lag(self) -> None:
+        landed = self.merged_by_hand()
+        ctx = self.context(FakeService([], {}))
+        before = {row["official_id"]: row["provenance"] for row in ctx.signatures["signatures"]}
+        self.assertEqual(before[TSUKUBA], "capture")
+        ok, _ = run(ctx)
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertTrue(derived_files_are_current(self.origin))
+        # Exactly one commit more, and exactly those two files in it.
+        self.assertEqual(git_in(self.origin, "rev-list", f"{landed}..main").split(), [head_of(self.origin)])
+        self.assertEqual(git_in(self.origin, "rev-parse", "main^"), landed)
+        self.assertEqual(git_in(self.origin, "log", "-1", "--format=%s", "main"), REBUILT)
+        self.assertEqual(git_in(self.origin, "show", "--name-only", "--format=", "main").split(),
+                         ["index.json", "signatures.json"])
+        # The layout check reads what was just built, not what the checkout
+        # held when the job started: the circuit is a surveyed row now.
+        after = {row["official_id"]: row["provenance"] for row in ctx.signatures["signatures"]}
+        self.assertEqual(after[TSUKUBA], "survey")
+
+        # A second run finds nothing to mend, and says so.
+        mended = head_of(self.origin)
+        ok, _ = run(self.context(FakeService([], {})))
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(head_of(self.origin), mended)
+        self.assertIn("are up to date at the start of a run", self.log.getvalue())
+
+    def test_a_rebuild_main_refuses_because_it_moved_starts_again_from_what_landed(self) -> None:
+        self.merged_by_hand(TSUKUBA_SURVEY)
+        others: list[str] = []
+
+        def somebody_else(push: int) -> None:
+            # Between the job's fetch and its push, once: another circuit,
+            # merged by hand, with no derived files of its own either.
+            if push == 1:
+                others.append(lands(
+                    self.origin,
+                    {f"tracks/{NORTHERN_ISLE_SURVEY.name}": NORTHERN_ISLE_SURVEY.read_text(encoding="utf-8")},
+                    "Merge a survey of Northern Isle Speedway by hand, at the wrong moment"))
+
+        meddler = Meddler(somebody_else)
+        ok, _ = run(self.context(FakeService([], {}), git=Git(self.repo, runner=meddler)))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(meddler.pushes, 2)
+        self.assertIn("(attempt 1 of 3)", self.log.getvalue())
+        # Nothing was forced: the other merge is in main's history, under the rebuild.
+        self.assertEqual(git_in(self.origin, "rev-parse", "main^"), others[0])
+        self.assertEqual(git_in(self.origin, "log", "-1", "--format=%s", "main"), REBUILT)
+        # And the rebuild that got through is of the main that was there by
+        # then, all three circuits, not the first attempt's sent again.
+        self.assertTrue(derived_files_are_current(self.origin))
+        index = json.loads(self.origin_has("main", "index.json"))
+        self.assertEqual(index["counts"]["surveyed"], 3)
+        self.assertEqual(git_in(self.repo, "status", "--porcelain"), "")
+
+    def test_a_main_that_will_not_stand_still_is_given_up_on_and_the_night_goes_on(self) -> None:
+        self.merged_by_hand()
+
+        def somebody_else(push: int) -> None:
+            lands(self.origin, {f"NOTES-{push}.md": "something else landed\n"}, "Something else lands")
+
+        meddler = Meddler(somebody_else)
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        ok, outcomes = run(self.context(service, git=Git(self.repo, runner=meddler)))
+
+        # Three attempts and no more, and the files are stale until the next
+        # rebuild. That is all it costs: the run is not failed for it, and
+        # the circuit that was waiting behind it still gets its pull request.
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(meddler.pushes, 3)
+        self.assertIn("could not be pushed in 3 attempts", self.log.getvalue())
+        self.assertFalse(derived_files_are_current(self.origin))
+        self.assertEqual(outcomes[0].action, "pull_request", self.log.getvalue())
+        self.assertEqual(carried_by(self.origin, "sync/deep-forest-raceway"), ["tracks/deep-forest-raceway.json"])
+        self.assertEqual(git_in(self.repo, "status", "--porcelain"), "")
+
+    def test_a_push_main_refuses_for_another_reason_is_not_tried_again(self) -> None:
+        landed = self.merged_by_hand()
+        # A main nobody may push to, which is what branch protection is.
+        hook = self.origin / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\necho 'main is protected' >&2\nexit 1\n", encoding="utf-8")
+        hook.chmod(0o755)
+        meddler = Meddler()
+        ok, _ = run(self.context(FakeService([], {}), git=Git(self.repo, runner=meddler)))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(meddler.pushes, 1)
+        self.assertIn("main is protected", self.log.getvalue())
+        self.assertIn("refused the push for another reason", self.log.getvalue())
+        self.assertEqual(head_of(self.origin), landed)
+        self.assertEqual(git_in(self.repo, "status", "--porcelain"), "")
+
+    def test_a_builder_that_fails_leaves_nothing_behind_and_does_not_fail_the_run(self) -> None:
+        # A bundle filed under an id the catalog does not hold, merged by
+        # hand. build_index.py takes it, lists it as unmatched and writes
+        # index.json; build_signatures.py refuses it. So one of the two files
+        # is rebuilt in the working tree at the moment the rebuild is given up.
+        stray = copy.deepcopy(self.existing)
+        stray["meta"]["official"]["official_id"] = "ffffff"
+        landed = lands(self.origin, {"tracks/stray.json": sync_job.canonical.dumps(stray)},
+                       "Merge a bundle under an id nobody has, by hand")
+        upload = survey_subset(self.existing, "feedbeef")
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        forge = FakeForge()
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertIn("could not be rebuilt at the start of a run", self.log.getvalue())
+        self.assertIn("signatures.json rebuilt: FAIL", self.log.getvalue())
+        self.assertIn("'ffffff' is not in catalog/tracks.json", self.log.getvalue())
+        # Main is as the person left it: nothing half-built was pushed.
+        self.assertEqual(head_of(self.origin), landed)
+        # The night went on. The circuit behind it has its pull request — a
+        # draft, because the same bundle fails the branch's own checks — and
+        # the index.json the failed rebuild wrote is neither in that pull
+        # request nor lying in the working tree for the next one to trip on.
+        self.assertEqual(outcomes[0].action, "pull_request", self.log.getvalue())
+        branch, _, body, draft = forge.upserts[0]
+        self.assertTrue(draft)
+        self.assertIn("- signatures.json builds from these bundles: **FAIL**", body)
+        self.assertEqual(carried_by(self.origin, branch), ["tracks/deep-forest-raceway.json"])
+        self.assertEqual(git_in(self.repo, "status", "--porcelain"), "")
+
+    def test_main_is_never_indexed_from_a_checkout_that_holds_more_than_main(self) -> None:
+        # A developer may run the job from their own checkout, and a
+        # circuit's turn can fail with its bundle written and not committed.
+        # Either way there is a survey in the working tree that is not
+        # published, and an index built there would say that it is.
+        landed = self.merged_by_hand()
+        stray = self.repo / "tracks" / NORTHERN_ISLE_SURVEY.name
+        shutil.copy(NORTHERN_ISLE_SURVEY, stray)
+        ok, _ = run(self.context(FakeService([], {})))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertIn("this checkout holds more than main does", self.log.getvalue())
+        self.assertIn(f"tracks/{NORTHERN_ISLE_SURVEY.name}", self.log.getvalue())
+        self.assertEqual(head_of(self.origin), landed)
+        # Theirs is left where it was, and nothing was built around it.
+        self.assertTrue(stray.exists())
+        self.assertEqual(git_in(self.repo, "status", "--porcelain"), f"?? tracks/{NORTHERN_ISLE_SURVEY.name}")
+
+    def test_a_dry_run_and_a_run_without_git_leave_a_lagging_main_as_they_found_it(self) -> None:
+        landed = self.merged_by_hand()
+        checked_out = git_in(self.repo, "rev-parse", "HEAD")
+        ok, _ = run(self.context(FakeService([], {}), dry_run=True))
+        self.assertTrue(ok)
+        ok, _ = run(self.context(FakeService([], {}), git=None, forge=None))
+        self.assertTrue(ok)
+        self.assertEqual(head_of(self.origin), landed)
+        self.assertEqual(git_in(self.repo, "rev-parse", "HEAD"), checked_out)
+        self.assertEqual(self.log.getvalue().count("index.json"), 0)
+
 
 # ── the wire, against a live service ────────────────────────────────────────
 
@@ -1108,6 +1649,23 @@ class ReconciliationTests(unittest.TestCase):
         self.assertTrue(any("could not be reconciled" in line for line in self.log))
 
 
+class RunIdTests(unittest.TestCase):
+    """Which run a pull request came from, as the service is told it."""
+
+    def test_a_pull_request_reported_outside_a_run_names_none(self) -> None:
+        # Sent none, the service keeps the run a row already names. An empty
+        # one would say the same thing less plainly, so nothing is sent.
+        service = FakeService([], {})
+        ctx = Context(service=service, repo=None, git=None, forge=None, policy={}, accounts={},
+                      configs={}, signatures={})
+        sync_job._report_merge_request(ctx, official_id=DEEP_FOREST, pr_url=PR_83, status="awaiting_review")
+        self.assertEqual(service.merge_requests,
+                         [{"official_id": DEEP_FOREST, "pr_url": PR_83, "status": "awaiting_review"}])
+        ctx.run_id = "job_7"
+        sync_job._report_merge_request(ctx, official_id=DEEP_FOREST, pr_url=PR_83, status="awaiting_review")
+        self.assertEqual(service.merge_requests[-1]["job_run_id"], "job_7")
+
+
 # ── what starts the job ────────────────────────────────────────────────────
 
 
@@ -1118,8 +1676,11 @@ class WorkflowTests(unittest.TestCase):
         self.text = (ROOT / ".github" / "workflows" / "sync.yml").read_text(encoding="utf-8")
 
     def test_it_runs_when_a_person_closes_one_of_its_pull_requests(self) -> None:
-        # Nothing else tells the service that somebody pressed Merge, and the
-        # other open pull requests have just gone stale in index.json.
+        # Nothing else tells the service that somebody pressed Merge. It was
+        # also, once, what mended the other open pull requests, which had just
+        # gone stale in index.json; they no longer carry it, and what a merge
+        # leaves stale now is main's own copy, which this run mends before
+        # anything else if nothing has yet.
         self.assertRegex(self.text, r"pull_request:\n\s+types: \[closed\]")
 
     def test_only_for_its_own_branches_and_never_for_a_fork(self) -> None:
@@ -1136,6 +1697,64 @@ class WorkflowTests(unittest.TestCase):
         # A conflicted pull request has no test merge to check out, and that
         # is the very one a run on close is there to mend.
         self.assertIn("github.event_name == 'pull_request' && github.event.repository.default_branch", self.text)
+
+
+# ── what rebuilds main's derived files after a person's merge ───────────────
+
+
+class ReindexWorkflowTests(unittest.TestCase):
+    """reindex.yml is configuration too, and it is the one workflow here that
+    pushes to main: what it must never do is as load-bearing as what it does."""
+
+    def setUp(self) -> None:
+        self.text = (ROOT / ".github" / "workflows" / "reindex.yml").read_text(encoding="utf-8")
+        # Each `run:` step as it is written, down to the next step.
+        self.blocks = [block.split("\n      - ")[0] for block in self.text.split("run: |")[1:]]
+        # And as the shell reads it: a comment may name what is forbidden.
+        self.commands = [line.strip() for block in self.blocks for line in block.splitlines()
+                         if line.strip() and not line.strip().startswith("#")]
+
+    def test_it_runs_on_every_push_to_main_and_when_asked(self) -> None:
+        # A person's merge is a push to main, and since no pull request
+        # carries index.json or signatures.json any more, this is the only
+        # thing that rebuilds them after one. By hand as well, for the day the
+        # weekly check finds them stale.
+        self.assertRegex(self.text, r"\non:\n  push:\n    branches: \[main\]\n  workflow_dispatch:\n")
+
+    def test_it_never_forces_a_push_to_main(self) -> None:
+        # A refused push means somebody else's merge reached main first. The
+        # answer is to rebuild on what they left; forced, the push would take
+        # their merge off main and leave an index that never heard of it.
+        # So every push in it is the plain one, written out whole: no flag
+        # and no `+` has anywhere to hide.
+        pushes = [line for line in self.commands if "git push" in line]
+        self.assertTrue(pushes, "it no longer pushes at all")
+        for line in pushes:
+            self.assertRegex(line, r"^(if )?git push origin HEAD:main(; then)?$")
+
+    def test_nothing_is_interpolated_into_a_run_block(self) -> None:
+        # As in sync.yml: a branch name is somebody else's text, and an
+        # expression is pasted into the script before the shell sees it,
+        # comments included. This one needs none at all, so it has none.
+        self.assertTrue(self.blocks)
+        for block in self.blocks:
+            self.assertNotIn("head_ref", block)
+            self.assertNotIn("${{", block)
+
+    def test_a_run_in_progress_is_never_cancelled(self) -> None:
+        # Cancelled between its commit and its push, a run would have rebuilt
+        # for nothing; the one behind it starts from main as it then is.
+        self.assertRegex(self.text, r"\nconcurrency:\n  group: reindex\n  cancel-in-progress: false\n")
+
+    def test_its_commit_is_the_job_s_own_and_carries_the_two_files_only(self) -> None:
+        # One subject for the same commit whoever makes it, so `git log` tells
+        # one story; and the two files by name, never whatever is staged.
+        script = "\n".join(self.commands)
+        self.assertIn(f'message="{REBUILT}', script)
+        self.assertEqual([line for line in self.commands if line.startswith("git commit")],
+                         ['git commit --quiet -m "$message" -- index.json signatures.json'])
+        self.assertEqual([line for line in self.commands if line.startswith("git add")],
+                         ["git add -- index.json signatures.json"])
 
 
 # ── an administrator's edit ────────────────────────────────────────────────
@@ -1291,12 +1910,14 @@ class EditEndToEndTests(unittest.TestCase):
         branch = "edit/deep-forest-raceway"
         changed = subprocess.run(["git", "diff", "--name-only", "main", branch], cwd=self.origin,
                                  capture_output=True, text=True, check=True).stdout.split()
-        # The corrections, and index.json — which names each circuit's
-        # corrections since #101, so the pack and the site ship them. Never the
-        # bundle. (Two edits can meet in index.json now; a waiting edit is
-        # rebuilt from main every night, which is what settles that.)
-        self.assertEqual(changed, ["corrections/deep-forest-raceway.json", "index.json"])
+        # The corrections, and nothing else. Never the bundle — and no longer
+        # index.json, which names each circuit's corrections since #101 and
+        # which an edit's pull request rewrote for that reason, so that two
+        # edits met there and every merge put the rest in conflict. It learns
+        # of the file when it is rebuilt on main, once the edit is merged.
+        self.assertEqual(changed, ["corrections/deep-forest-raceway.json"])
         self.assertFalse([name for name in changed if name.startswith("tracks/")])
+        self.assertEqual(self.origin_has(branch, "index.json"), self.origin_has("main", "index.json"))
         self.assertNotIn("drawn-", self.origin_has(branch, "tracks/deep-forest-raceway.json"))
         # And what was drawn is on the map all the same.
         candidate, _ = service.candidates[DEEP_FOREST]
@@ -1337,6 +1958,56 @@ class EditEndToEndTests(unittest.TestCase):
         self.assertLess(published["coverage"]["R"]["surveyed_m"], untouched["coverage"]["R"]["surveyed_m"])
         # … and a finished edit is not picked up again.
         self.assertEqual(service.open_edits(), [])
+        # Main's index.json names the corrections file now, so the pack and
+        # the site ship it. The pull request did not carry that line: the run
+        # that found the edit merged rebuilt the index on main, before it did
+        # anything else.
+        index = json.loads(self.origin_has("main", "index.json"))
+        row = next(c for c in index["configurations"] if c["official_id"] == DEEP_FOREST)
+        self.assertEqual(row["bundle"]["corrections"], "corrections/deep-forest-raceway.json")
+        self.assertEqual(index["counts"]["corrected"], 1)
+        self.assertEqual(git_in(self.origin, "show", "--name-only", "--format=%s", "main").split("\n"),
+                         [REBUILT, "", "index.json"])
+        self.assertTrue(derived_files_are_current(self.origin))
+
+    def test_an_edit_that_takes_the_corrections_away_carries_only_that(self) -> None:
+        # The other way round: the one file an edit's pull request carries
+        # may be a file it removes, and index.json stops naming it only once
+        # that is merged and the index rebuilt.
+        x, z = self.right_border_spot()
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
+        forge = FakeForge()
+        run(self.context(service, forge))
+        self.land("edit/deep-forest-raceway")
+        forge.open.clear()
+        run(self.context(service, forge))
+        held = self.origin_has("main", "corrections/deep-forest-raceway.json")
+        self.assertTrue(held)
+
+        undo = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway",
+                                               note="the pit wall is the track's edge after all",
+                                               base=sync_job.text_digest(held)))
+        ok, _ = run(self.context(undo, forge))
+        self.assertTrue(ok, self.log.getvalue())
+        branch = "edit/deep-forest-raceway"
+        self.assertEqual(undo.edit_reports[-1][:2], ("edt_1", "pr_open"), self.log.getvalue())
+        self.assertEqual(carried_by(self.origin, branch), ["corrections/deep-forest-raceway.json"])
+        self.assertEqual(self.origin_has(branch, "corrections/deep-forest-raceway.json"), "")
+        self.assertEqual(self.origin_has(branch, "index.json"), self.origin_has("main", "index.json"))
+
+    def test_every_pull_request_reported_names_the_run_that_reported_it(self) -> None:
+        # The service has always taken `job_run_id` with a merge request and
+        # the job never sent it, so no pull request could be traced to a run.
+        x, z = self.right_border_spot()
+        service = self.service_with(edit_document(DEEP_FOREST, "Deep Forest Raceway", areas=[square(x, z)]))
+        service.uploads = [upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)]
+        service.bundles = {"upl_1": survey_subset(self.existing, "feedbeef")}
+        ok, _ = run(self.context(service, FakeForge()))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(service.runs[0], {"id": "job_test", "open": True})
+        self.assertEqual([(m["branch"], m["job_run_id"]) for m in service.merge_requests],
+                         [("sync/deep-forest-raceway", "job_test"), ("edit/deep-forest-raceway", "job_test")])
 
     def test_a_correction_outlives_the_next_upload_of_the_very_records_it_hides(self) -> None:
         # The reason corrections exist. A logger uploads its whole bundle on
@@ -1494,8 +2165,10 @@ class ContractTests(unittest.TestCase):
         gate = evaluate_gate(gate_input(), SETTINGS)
         reply = self.service.report_merge_request(official_id="sync-test", pr_url="https://example.invalid/pull/1",
                                                   branch="sync/sync-test", accounts=1, new_metres=2,
-                                                  kind_changes=0, gate=gate, status="awaiting_review")
+                                                  kind_changes=0, gate=gate, status="awaiting_review",
+                                                  job_run_id=run_id)
         self.assertIn("merge_request", reply)
+        self.assertEqual(reply["merge_request"]["job_run_id"], run_id)
         published = self.service.publish("sync-test", {"track_name": "Sync Test", "slug": "sync-test",
                                                        "length_m": 2, "coverage": {"left": 100, "right": 100},
                                                        "closed": True, "contributors": 1, "runs": 1,

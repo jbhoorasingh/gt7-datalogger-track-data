@@ -347,17 +347,43 @@ class SignatureBuildTests(unittest.TestCase):
         self.assertEqual(self.doc()["counts"]["path_step_m"], 5)
 
 
-class CommittedSignatureTests(unittest.TestCase):
-    """What the file this repository actually ships has to be true of."""
+class ShippedSignatureTests(unittest.TestCase):
+    """What the file this repository actually ships has to be true of.
+
+    Built here, from the tree, exactly as the pack and the site build it —
+    and not read from the committed copy, as it used to be. That copy is
+    rebuilt on main after every merge and no pull request carries it, so on a
+    branch that adds a survey, and on main for the few seconds between a
+    merge and its rebuild, it honestly describes the bundles as they were one
+    merge ago. Read from it, two of these tests failed on exactly those
+    checkouts, which are the ones validate.yml runs them on: a first survey
+    of a circuit had no survey row yet, and the file did not match its
+    inputs. What they ask is about the bundles and the captures, and should
+    not turn on which side of that moment the checkout was taken.
+    """
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.doc = json.loads(build_signatures.SIGNATURES.read_text(encoding="utf-8"))
+        try:
+            built = build_signatures.build()
+        except SystemExit as exc:  # the builder's way of refusing; a failure, not an exit
+            raise AssertionError(f"signatures.json cannot be built from this tree:\n{exc}") from None
+        cls.doc = json.loads(build_signatures.dumps(built))
         cls.vendored = json.loads(build_signatures.CAPTURES.read_text(encoding="utf-8"))
 
-    def test_the_committed_file_matches_its_inputs(self) -> None:
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(build_signatures.main(["--check"]), 0)
+    def test_the_file_can_be_built_and_asking_writes_nothing(self) -> None:
+        # Whether the COMMITTED copy matches its inputs is no longer asked
+        # here, for the reason above; validate.yml still asks it, weekly, with
+        # `--check`. What a checkout can always be asked is whether the file
+        # builds — and the asking must leave the committed copy alone, stale
+        # or not, because it is main's to rebuild and nobody else's.
+        committed = build_signatures.SIGNATURES
+        before = committed.read_bytes() if committed.exists() else None
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(build_signatures.main(["--verify"]), 0)
+        self.assertIn("signatures.json can be built from this tree", out.getvalue())
+        self.assertEqual(committed.read_bytes() if committed.exists() else None, before)
 
     def test_every_row_is_shaped_the_way_the_app_reads_it(self) -> None:
         seen = set()

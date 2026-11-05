@@ -50,5 +50,10 @@ upstream rename worth a line in `CAPTURE_NAME_FIXES`, and the file cannot tell
 which. The re-vendored captures are already on the branch, so making the call
 and pushing is the only work left.
 
-Neither command runs on an ordinary pull request. `build_signatures.py --check`
-is what guards the generated file there, offline, against whatever is vendored.
+Neither command runs on an ordinary pull request. What is asked there, offline
+and against whatever is vendored, is `build_signatures.py --verify`: that
+`signatures.json` can still be built. Whether the committed copy matches is
+asked of `main`, weekly, with `--check` — `main` rebuilds that copy after every
+merge and an ordinary pull request does not carry it. The refresh's own pull
+request does, because what the new captures do to `signatures.json` is what it
+is about.

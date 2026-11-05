@@ -97,9 +97,18 @@ jobs:
           # Redirected, never piped: the left-hand side of a pipeline runs in a
           # subshell, so `ok` would be set there and read back here as 0, and
           # every refresh would claim to have passed.
+          #
+          # Of index.json it asks only that it builds. This pull request does
+          # not carry it, and main's copy is one merge behind for the few
+          # seconds between a merge and the commit that rebuilds it
+          # (reindex.yml): "matches" asked in those seconds would fail a
+          # refresh that had nothing to do with it. signatures.json is this
+          # pull request's subject, rebuilt in the step before this one and
+          # carried on its branch, so of that one "matches" is still the
+          # question.
           {
             check "every bundle is valid" python tools/validate.py
-            check "index.json matches the bundles" python tools/build_index.py --check
+            check "index.json builds from the bundles" python tools/build_index.py --verify
             check "signatures.json matches its inputs" python tools/build_signatures.py --check
             check "signature build tests" python tools/test_build_signatures.py
             check "vendoring tests" python tools/test_vendor_captures.py

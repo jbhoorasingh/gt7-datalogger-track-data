@@ -10,7 +10,13 @@ catalog/tracks.json, tracks/*.json and which circuits corrections/ holds a
 file for, so CI can regenerate it and fail the build when the committed copy
 is stale, and a rebuild never produces a diff of its own.
 
-    python tools/build_index.py [--check]
+    python tools/build_index.py [--check | --verify]
+
+`--check` asks whether the committed copy matches. `--verify` asks only
+whether the file can be built, and writes nothing: a pull request no longer
+carries index.json — it is rebuilt on `main` after every merge, so that two
+pull requests share no file and cannot conflict — and on a branch the question
+is therefore "does it build", not "does the committed copy match".
 """
 
 from __future__ import annotations
@@ -152,6 +158,11 @@ def main(argv: list[str]) -> int:
             print("index.json is stale — run: python tools/build_index.py")
             return 1
         print("index.json is up to date")
+        return 0
+    if "--verify" in argv:
+        # Built exactly as it would be written, and not written: anything that
+        # would have failed the build has failed by now.
+        print("index.json can be built from this tree")
         return 0
     INDEX.write_text(text, encoding="utf-8")
     c = index["counts"]
