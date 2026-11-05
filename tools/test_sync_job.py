@@ -53,6 +53,7 @@ try:
 except ImportError:
     HAVE_COMPILER = False
 
+import build_signatures  # noqa: E402
 import corrections  # noqa: E402
 import sync_job  # noqa: E402
 from sync_job import (  # noqa: E402
@@ -402,19 +403,93 @@ class CoverageAcceptanceTests(unittest.TestCase):
 # ── which layout a survey is of ─────────────────────────────────────────────
 
 
+# A survey with fewer border records than this fraction of its lap's length in
+# metres is too partial for its bounding box to mean anything, and is not asked
+# to be recognised.
+#
+# 2026-11-05: `dragon-trail-gardens-reverse.json` arrived as 134 records of a
+# 4,352 m lap — 0.03 records per metre, where every other bundle here has at
+# least 0.97. So sparse a survey has a box 20.0 % narrower than its forward
+# twin's signature row, against a tolerance of 20 %. It missed its own circuit
+# by a hair, fitted the box of Autodrome Lago Maggiore - West End instead, and
+# was read as that circuit's reverse. The job did what it is for: it held the
+# upload with a `layout_mismatch` issue, the administrator answered "file it as
+# claimed" at 20:34:07Z, the gate passed "Layout agreement" on that acceptance,
+# and the job merged it as #117 at 20:38:19Z. The test below knew nothing of
+# accepted layouts — nothing in the repository records one — so it failed on
+# main from that minute; and sync.yml runs this file before the job, so the
+# next run would have stopped before it did anything.
+#
+# Half a record per metre is far from both of those figures, so the rule lets
+# off a fragment and nothing that could be called a survey of the circuit.
+PARTIAL_SURVEY_RECORDS_PER_METRE = 0.5
+
+
+def too_partial_to_place(doc: dict[str, Any]) -> bool:
+    """Whether a survey is too sparse for its box to say which circuit it is.
+
+    A bundle that does not say how long its lap is is never let off: the rule
+    excuses a survey it can measure, not one it cannot.
+    """
+    official = (doc.get("meta") or {}).get("official") or {}
+    return len(doc.get("edges", [])) < PARTIAL_SURVEY_RECORDS_PER_METRE * float(official.get("length_m") or 0)
+
+
 class IdentificationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.signatures = Repository(ROOT).signatures()
+        # Built here, from the tree, exactly as the file would be written —
+        # and not read from the committed copy. That copy is rebuilt on main
+        # after every merge and is a few seconds behind it in between; the
+        # question these tests ask is about the bundles, and should not turn
+        # on which side of that moment the checkout was taken.
+        try:
+            built = build_signatures.build()
+        except SystemExit as exc:  # the builder's way of refusing; a failure, not an exit
+            raise AssertionError(f"signatures.json cannot be built from this tree:\n{exc}") from None
+        cls.signatures = json.loads(build_signatures.dumps(built))
 
     def test_every_survey_in_the_repository_is_recognised_as_its_confirmed_layout(self) -> None:
+        asked: list[str] = []
+        let_off: list[str] = []
         for path in sorted((ROOT / "tracks").glob("*.json")):
             doc = load_survey(path)
+            if too_partial_to_place(doc):
+                let_off.append(path.name)
+                continue
+            asked.append(path.name)
             claimed = doc["meta"]["official"]["official_id"]
             with self.subTest(path.name):
                 layout = identify_layout(doc, None, self.signatures)
                 self.assertIs(layout["agrees"], True, layout)
                 self.assertEqual(layout["signature_official_id"], claimed)
+
+        # The exemption is the rule's and nothing wider. Every survey let off
+        # is one the rule names, counted here from the file and not through
+        # the helper; a complete survey is never among them, so one that stops
+        # being recognised still fails above, by name; and the survey every
+        # other test here leans on is asked like the rest.
+        for path in sorted((ROOT / "tracks").glob("*.json")):
+            doc = load_survey(path)
+            records, lap_m = len(doc["edges"]), float(doc["meta"]["official"].get("length_m") or 0)
+            with self.subTest(path.name, records=records, lap_m=lap_m):
+                self.assertEqual(path.name in let_off, records * 2 < lap_m)
+        self.assertIn(SURVEY.name, asked)
+
+    def test_only_a_survey_too_sparse_to_have_a_box_is_let_off(self) -> None:
+        # The rule on its own, so that it cannot drift into letting off
+        # whatever fails: just under half a record a metre is partial, half
+        # is not, and a lap of unknown length is never an excuse.
+        def survey(records: int, length_m: Any) -> dict[str, Any]:
+            return {"meta": {"official": {"length_m": length_m}}, "edges": [{}] * records}
+
+        self.assertTrue(too_partial_to_place(survey(134, 4352)))
+        self.assertTrue(too_partial_to_place(survey(2175, 4352)))
+        self.assertFalse(too_partial_to_place(survey(2176, 4352)))
+        self.assertFalse(too_partial_to_place(survey(4962, 5113.0)))
+        for unknown in (None, 0, 0.0):
+            self.assertFalse(too_partial_to_place(survey(1, unknown)))
+        self.assertFalse(too_partial_to_place({"meta": {}, "edges": []}))
 
     def test_a_survey_claimed_as_its_reverse_twin_is_caught(self) -> None:
         doc = load_survey()
