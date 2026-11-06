@@ -815,7 +815,19 @@ def survey_subset(doc: dict[str, Any], source: str, every: int = 2) -> dict[str,
 
 def seed_tree(root: Path) -> None:
     """What the tools need of this repository, copied: the catalog, the
-    vendored captures, the tools themselves, and one survey."""
+    vendored captures, the tools themselves, and one survey — and what it
+    ignores.
+
+    The `.gitignore` is not decoration. The job runs the repository's tools,
+    Python writes their bytecode beside them, and this repository ignores
+    `__pycache__/`; a copy that did not would show those files as untracked,
+    and every test here that asks for a clean working tree would be asking
+    it of Python and not of the job. That is how the first run after these
+    tests were written stopped before the job (2026-11-06, 02:02 UTC): they
+    passed on a machine that sets PYTHONDONTWRITEBYTECODE and failed on
+    GitHub's runner, which does not.
+    """
+    shutil.copy(ROOT / ".gitignore", root / ".gitignore")
     for name in ("catalog", "vendor"):
         shutil.copytree(ROOT / name, root / name)
     (root / "tools").mkdir()
