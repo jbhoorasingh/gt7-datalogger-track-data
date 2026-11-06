@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 29,
-  "points": 139785,
-  "corners_labelled": 153,
+  "surveyed": 30,
+  "points": 142753,
+  "corners_labelled": 162,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1836,7 +1836,21 @@
    "type": "real",
    "reverse": false,
    "slug": "suzuka-circuit-east-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/suzuka-circuit-east-course.json",
+    "track": "Suzuka Circuit East Course",
+    "points": 2968,
+    "manual_points": 2375,
+    "elevation_pct": 100.0,
+    "runs": 1,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 9,
+    "sections": 1,
+    "sectors": 0,
+    "updated_at": "2026-09-29T13:05:58.921886+00:00",
+    "bytes": 463296
+   }
   },
   {
    "official_id": "779efe",
