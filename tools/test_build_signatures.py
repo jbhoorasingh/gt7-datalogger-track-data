@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import sys
 import tempfile
+from typing import Any
 import unittest
 from unittest import mock
 
@@ -423,16 +424,35 @@ class ShippedSignatureTests(unittest.TestCase):
             # A twin is reached through this row, never as a row of its own.
             self.assertNotIn(twin["official_id"], ids)
 
+    def captures_by_configuration(self) -> dict[str, dict[str, Any]]:
+        """Each vendored capture under the configuration the builder files it
+        as, the way `build` does it: by name, against the forward layouts."""
+        catalog = json.loads(build_signatures.CATALOG.read_text(encoding="utf-8"))
+        by_name: dict[str, dict[str, Any]] = {}
+        for config in build_signatures.configurations(catalog):
+            if not config["reverse"]:
+                by_name.setdefault(build_signatures.normalise(config["official_name"]), config)
+        rows, _ = build_signatures.capture_rows(self.vendored["captures"], by_name)
+        return rows
+
     def test_a_survey_row_path_is_the_capture_it_borrowed(self) -> None:
         by_id = {r["official_id"]: r for r in self.doc["signatures"]}
-        lengths = {c["length_m"]: c for c in self.vendored["captures"]}
+        # The capture a survey borrowed from is its own configuration's, found
+        # the way the builder finds it. It used to be looked up here by lap
+        # length, on the reasoning that a length to a tenth of a metre names a
+        # capture. Two of them are 3,560.0 m — SUGO and Laguna Seca — and that
+        # went unnoticed while only Laguna Seca had been surveyed: the first
+        # survey of SUGO was compared with Laguna Seca's line and `validate`
+        # went red on main (2026-11-06, after #120). The row was right.
+        captures = self.captures_by_configuration()
         borrowed = 0
         for row in self.doc["signatures"]:
             if row["provenance"] != "survey" or "path" not in row:
                 continue
-            capture = lengths.get(row["length_m"])
+            capture = captures.get(row["official_id"])
             self.assertIsNotNone(capture, row["official_name"])
-            self.assertEqual(row["path"], capture["path"], row["official_name"])
+            self.assertEqual(row["path"], [list(point) for point in capture["path"]], row["official_name"])
+            self.assertEqual(row["length_m"], capture["length_m"], row["official_name"])
             borrowed += 1
         self.assertEqual(borrowed, sum(1 for r in by_id.values()
                                        if r["provenance"] == "survey" and "path" in r))
