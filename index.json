@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 33,
-  "points": 150708,
+  "surveyed": 34,
+  "points": 156188,
   "corners_labelled": 166,
   "corrected": 9
  },
@@ -2062,7 +2062,21 @@
    "type": "real",
    "reverse": false,
    "slug": "watkins-glen-short-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/watkins-glen-short-course.json",
+    "track": "Watkins Glen Short Course",
+    "points": 5480,
+    "manual_points": 2682,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 6,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 0,
+    "updated_at": "2026-11-10T15:53:21.031280+00:00",
+    "bytes": 850571
+   }
   },
   {
    "official_id": "6cdd45",
