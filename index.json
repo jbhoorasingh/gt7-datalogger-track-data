@@ -5,7 +5,7 @@
  "counts": {
   "configurations": 122,
   "surveyed": 33,
-  "points": 150287,
+  "points": 150708,
   "corners_labelled": 166,
   "corrected": 9
  },
@@ -575,17 +575,17 @@
     "file": "tracks/bb-raceway.json",
     "corrections": "corrections/bb-raceway.json",
     "track": "BB Raceway",
-    "points": 3567,
+    "points": 3988,
     "manual_points": 3479,
     "elevation_pct": 100.0,
-    "runs": 5,
+    "runs": 6,
     "sources": 2,
-    "finish_crossings": 10,
+    "finish_crossings": 13,
     "corners": 4,
     "sections": 0,
-    "sectors": 0,
-    "updated_at": "2026-11-09T22:47:56.403559+00:00",
-    "bytes": 534651
+    "sectors": 2,
+    "updated_at": "2026-11-10T14:13:55.227651+00:00",
+    "bytes": 610011
    }
   },
   {
