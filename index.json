@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 32,
-  "points": 149066,
+  "surveyed": 33,
+  "points": 150287,
   "corners_labelled": 166,
   "corrected": 9
  },
@@ -23,7 +23,21 @@
    "type": "real",
    "reverse": false,
    "slug": "24-heures-du-mans-racing-circuit",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/24-heures-du-mans-racing-circuit.json",
+    "track": "24 Heures du Mans Race Circuit",
+    "points": 1221,
+    "manual_points": 0,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 0,
+    "updated_at": "2026-11-10T11:12:00.680140+00:00",
+    "bytes": 195145
+   }
   },
   {
    "official_id": "fbd5bc",
