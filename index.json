@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 40,
-  "points": 184471,
+  "surveyed": 41,
+  "points": 191166,
   "corners_labelled": 208,
   "corrected": 9
  },
@@ -1934,7 +1934,21 @@
    "type": "original",
    "reverse": false,
    "slug": "tokyo-expressway-east-counterclockwise",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/tokyo-expressway-east-counterclockwise.json",
+    "track": "Tokyo Expressway - East Counterclockwise",
+    "points": 6695,
+    "manual_points": 6671,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 0,
+    "updated_at": "2026-11-12T17:36:11.279239+00:00",
+    "bytes": 1006363
+   }
   },
   {
    "official_id": "80ef82",
