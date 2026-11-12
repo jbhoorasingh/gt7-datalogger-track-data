@@ -71,6 +71,8 @@ from sync_job import (  # noqa: E402
     kind_changes,
     new_metres,
     policy_kinds,
+    runs_elsewhere,
+    thinned,
     candidate_document,
     publishable_copy,
     run,
@@ -85,6 +87,8 @@ ACCOUNTS = {"aaaa11": ALICE, "aaaa22": ALICE, "bbbb11": BOB, "cccc11": CAROL}
 SURVEY = ROOT / "tracks" / "deep-forest-raceway.json"
 DEEP_FOREST = "0457d4"
 DEEP_FOREST_REVERSE = "f3e708"
+WATKINS_GLEN = ROOT / "tracks" / "watkins-glen-long-course.json"
+WATKINS_GLEN_LONG = "60d74b"
 
 
 def load_survey(path: Path = SURVEY) -> dict[str, Any]:
@@ -511,6 +515,57 @@ class IdentificationTests(unittest.TestCase):
         self.assertIsNone(layout["agrees"])
         self.assertEqual(layout["signature_official_id"], "")
 
+    # Production, 2026-11-12. One logger sent Blue Moon Bay Speedway with three
+    # runs of Watkins Glen inside it. The box of the two together is as wide as
+    # the oval and as tall as the Glen, which fits Sardegna and Mount Panorama
+    # and neither circuit driven; the administrator was shown the first 200
+    # points of one of those, an open squiggle, beside a correct oval.
+
+    def mixed_survey(self) -> dict[str, Any]:
+        own = survey_subset(load_survey(), "feedbeef")
+        return with_runs_from(own, load_survey(WATKINS_GLEN)["edges"], "feedbeef")
+
+    def test_a_survey_with_another_circuits_run_in_it_is_read_as_neither(self) -> None:
+        # What went wrong, kept as a fact about the whole-file reading: it is
+        # why the runs are separated before anything is asked of the box.
+        layout = identify_layout(self.mixed_survey(), None, self.signatures)
+        self.assertIsNot(layout["agrees"], True)
+        self.assertNotIn(layout["signature_official_id"], (DEEP_FOREST, WATKINS_GLEN_LONG))
+
+    def test_the_run_driven_elsewhere_is_found_and_placed(self) -> None:
+        doc = self.mixed_survey()
+        doc["finish_crossings"] = list(doc["finish_crossings"]) + load_survey(WATKINS_GLEN)["finish_crossings"][:1]
+        found = runs_elsewhere(doc, self.signatures)
+        assert found is not None
+        self.assertEqual(found["runs"], [2])
+        self.assertEqual(found["edges"], sum(1 for e in doc["edges"] if e["run"] == 2))
+        self.assertEqual(found["crossings"], 1)
+        self.assertEqual({e["run"] for e in found["kept"]["edges"]}, {1})
+        self.assertEqual(len(found["kept"]["finish_crossings"]), len(doc["finish_crossings"]) - 1)
+
+        kept = identify_layout(found["kept"], None, self.signatures)
+        self.assertIs(kept["agrees"], True)
+        where = identify_layout(found["elsewhere"], None, self.signatures)
+        self.assertEqual(where["signature_official_id"], WATKINS_GLEN_LONG)
+
+    def test_no_survey_in_the_repository_has_a_run_driven_elsewhere(self) -> None:
+        for path in sorted((ROOT / "tracks").glob("*.json")):
+            with self.subTest(path.name):
+                self.assertIsNone(runs_elsewhere(load_survey(path), self.signatures))
+
+    def test_a_survey_that_is_all_somewhere_else_is_left_to_the_ordinary_reading(self) -> None:
+        doc = load_survey(WATKINS_GLEN)
+        doc["meta"]["official"]["official_id"] = DEEP_FOREST
+        self.assertIsNone(runs_elsewhere(doc, self.signatures))
+
+    def test_a_line_is_thinned_along_its_whole_length_and_never_cut_short(self) -> None:
+        line = [[float(i), 0.0] for i in range(301)]
+        drawn = thinned(line, 200)
+        self.assertEqual(len(drawn), 200)
+        self.assertEqual(drawn[0], [0.0, 0.0])
+        self.assertGreater(drawn[-1][0], 298)  # the far end of the lap, not two thirds of the way round
+        self.assertEqual(thinned(line[:50], 200), line[:50])
+
 
 # ── the whole run, against a fake service and a real git ────────────────────
 
@@ -811,6 +866,28 @@ def survey_subset(doc: dict[str, Any], source: str, every: int = 2) -> dict[str,
     out["meta"]["source_runs"] = {source: 1}
     out["meta"]["runs"] = 1
     return out
+
+
+def with_runs_from(doc: dict[str, Any], other: list[dict[str, Any]], source: str, run: int = 2,
+                   every: int = 4) -> dict[str, Any]:
+    """`doc` as a logger that was never told the circuit changed would send
+    it: its own survey, and then a run of `other` — some other road's records
+    — filed in the same document under the same name."""
+    out = copy.deepcopy(doc)
+    for i, e in enumerate(other):
+        if i % every:
+            continue
+        extra = copy.deepcopy(e)
+        extra["votes"] = {extra["kind"]: {source: [1, 1]}}
+        extra["run"] = run
+        out["edges"].append(extra)
+    out["meta"]["source_runs"] = {source: run}
+    out["meta"]["runs"] = run
+    return out
+
+
+def moved(edges: list[dict[str, Any]], dx: float) -> list[dict[str, Any]]:
+    return [{**e, "x": e["x"] + dx} for e in edges]
 
 
 def seed_tree(root: Path) -> None:
@@ -1209,6 +1286,55 @@ class EndToEndTests(unittest.TestCase):
         self.assertIn("accepted by the administrator", layout["value"])
         # A first publication of the reverse layout: the perimeter rule applies.
         self.assertEqual(outcomes[0].gate["mode"], "first_publication")
+
+    def mixed_upload(self) -> dict[str, Any]:
+        """Deep Forest, and a second run five kilometres east of it."""
+        own = survey_subset(self.existing, "feedbeef")
+        doc = with_runs_from(own, moved(self.existing["edges"], 5_000), "feedbeef")
+        far = dict(doc["finish_crossings"][0])
+        far["x"] += 5_000
+        doc["finish_crossings"] = list(doc["finish_crossings"]) + [far]
+        return doc
+
+    def test_a_survey_with_a_run_driven_elsewhere_is_held_and_says_which(self) -> None:
+        upload = self.mixed_upload()
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": upload})
+        forge = FakeForge()
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(outcomes[0].action, "held")
+        self.assertEqual(forge.upserts, [])
+        self.assertEqual([s[:2] for s in service.statuses], [("upl_1", "held")])
+        issue = service.issues[0]
+        self.assertEqual(issue["type"], "layout_mismatch")
+        detail = issue["detail"]
+        self.assertEqual(detail["contributor_official_id"], DEEP_FOREST)
+        self.assertEqual(detail["runs_elsewhere"], [2])
+        self.assertEqual(detail["records_elsewhere"], sum(1 for e in upload["edges"] if e["run"] == 2))
+        self.assertEqual(detail["records_on_layout"], sum(1 for e in upload["edges"] if e["run"] == 1))
+        self.assertEqual(detail["crossings_elsewhere"], 1)
+        # Nothing is five kilometres east of Deep Forest, and it is not Deep Forest.
+        self.assertEqual(detail["signature_official_id"], "")
+        self.assertIn("driven elsewhere", issue["summary"])
+        # The contributor's side is their own circuit alone: no line strays east.
+        self.assertGreater(len(detail["contributor_line"]), 10)
+        self.assertLess(max(p[0] for p in detail["contributor_line"]), 2_000)
+
+    def test_once_accepted_the_survey_goes_through_without_that_run(self) -> None:
+        service = FakeService([upload_row("upl_1", DEEP_FOREST, "feedbeef", BOB)], {"upl_1": self.mixed_upload()})
+        service.layout.append({"issue_id": "iss_1", "official_id": DEEP_FOREST, "upload_id": "upl_1",
+                               "decided_at": "2026-11-12T00:00:00Z", "decided_by": "usr_admin"})
+        forge = FakeForge()
+        ok, outcomes = run(self.context(service, forge))
+
+        self.assertTrue(ok, self.log.getvalue())
+        self.assertEqual(service.issues, [])
+        self.assertNotEqual(outcomes[0].action, "held", self.log.getvalue())
+        self.assertIn("leaving out run(s) 2 driven elsewhere", self.log.getvalue())
+        written = json.loads(self.origin_has("sync/deep-forest-raceway", "tracks/deep-forest-raceway.json"))
+        self.assertLess(max(e["x"] for e in written["edges"]), 2_000)
+        self.assertLess(max(c["x"] for c in written["finish_crossings"]), 2_000)
 
     def test_a_document_the_repository_refuses_is_rejected_with_its_words(self) -> None:
         bad = survey_subset(self.existing, "feedbeef")

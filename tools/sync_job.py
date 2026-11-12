@@ -135,6 +135,19 @@ DRAWN_PREFIX = "drawn-"
 # a megabyte of coordinates.
 LINE_POINTS = 200
 
+# How far from the confirmed layout's line a surveyed record may lie and still
+# be on that circuit. A wall across the widest run-off is nearer than this to
+# the line; the nearest corner of any other circuit a logger could have been
+# taken to is not. Every record of every survey in the repository lies within
+# 40 m of its own circuit's line, so 60 has room on both sides.
+ELSEWHERE_M = 60.0
+# How much of a run has to lie beyond that before the run is read as driven
+# somewhere else. A run on its own circuit has none; a run on a longer
+# configuration of the same venue shares road with the confirmed one and has
+# about half (53 % for Lago Maggiore's Full Course inside an East End survey);
+# a run on another circuit has nearly all.
+ELSEWHERE_RUN_FRACTION = 0.2
+
 # Text the service shows the contributor. Written for them, not for a log.
 REASON_AWAITING = "waiting for a person to review the pull request"
 
@@ -631,6 +644,20 @@ def identify_layout(doc: dict[str, Any], compiled: dict[str, Any] | None,
     }
 
 
+def thinned(line: list[Any], points: int = LINE_POINTS) -> list[Any]:
+    """`line` at no more than `points` points, taken evenly along all of it.
+
+    Thinned and never cut short: the first 200 points of a 300-point lap are
+    two thirds of a circuit, drawn as an open squiggle nobody recognises —
+    which is what the signature's side of a `layout_mismatch` used to show for
+    every circuit longer than four kilometres.
+    """
+    if len(line) <= points:
+        return list(line)
+    step = len(line) / points
+    return [line[int(i * step)] for i in range(points)]
+
+
 def contributor_line(compiled: dict[str, Any] | None, points: int = LINE_POINTS) -> list[list[float]]:
     """The compiled centre line, thinned, for an issue a person will look at."""
     if not compiled:
@@ -638,10 +665,92 @@ def contributor_line(compiled: dict[str, Any] | None, points: int = LINE_POINTS)
     line: list[list[float]] = []
     for run in compiled.get("centerline") or []:
         line.extend([round(float(p[0]), 1), round(float(p[1]), 1)] for p in run)
-    if len(line) <= points:
-        return line
-    step = len(line) / points
-    return [line[int(i * step)] for i in range(points)]
+    return thinned(line, points)
+
+
+# ── runs driven somewhere else ─────────────────────────────────────────────
+
+
+def _signature_row(signatures: dict[str, Any], official_id: str) -> dict[str, Any] | None:
+    """The row describing `official_id`'s road: its own, or its forward twin's."""
+    for row in signatures.get("signatures", []):
+        if row.get("official_id") == official_id or (row.get("reverse") or {}).get("official_id") == official_id:
+            return row
+    return None
+
+
+def _beyond(path: list[Any], reach: float) -> Callable[[dict[str, Any]], bool]:
+    """A test for "this point is further than `reach` from every point of `path`"."""
+    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for px, pz in path:
+        grid.setdefault((math.floor(px / reach), math.floor(pz / reach)), []).append((px, pz))
+
+    def beyond(point: dict[str, Any]) -> bool:
+        x, z = point["x"], point["z"]
+        cx, cz = math.floor(x / reach), math.floor(z / reach)
+        return not any(math.hypot(px - x, pz - z) <= reach
+                       for a in (-1, 0, 1) for b in (-1, 0, 1)
+                       for px, pz in grid.get((cx + a, cz + b), ()))
+    return beyond
+
+
+def runs_elsewhere(doc: dict[str, Any], signatures: dict[str, Any]) -> dict[str, Any] | None:
+    """The runs of a survey that were not driven on the circuit it names.
+
+    A logger that is not told the circuit changed keeps surveying into the
+    file it has open, and the upload that arrives is one circuit's survey with
+    another circuit's laps inside it. Read whole, such a file has the box of
+    neither: Blue Moon Bay with three runs of Watkins Glen in it is as wide as
+    the one and as tall as the other, which is the box of Sardegna, and that
+    is what the administrator was shown — a circuit nobody drove.
+
+    So the survey is read a run at a time against the line of the layout it
+    confirms. A run most of whose records lie on that line is the survey; a
+    run with more than `ELSEWHERE_RUN_FRACTION` of them beyond `ELSEWHERE_M`
+    was driven somewhere else, and is returned whole — the stretch it shares
+    with the confirmed layout included, because a run on a longer
+    configuration leaves the junction's kerbs behind as well.
+
+    None when there is nothing to say: the layout has no line to measure
+    against, every run is on it, or no run is — a survey that is entirely
+    somewhere else is an ordinary wrong name, and `identify_layout` reads it.
+    """
+    claimed = str(((doc.get("meta") or {}).get("official") or {}).get("official_id", ""))
+    row = _signature_row(signatures, claimed)
+    path = (row or {}).get("path") or []
+    edges = doc.get("edges", [])
+    if len(path) < MIN_PATH_POINTS or not edges:
+        return None
+    beyond = _beyond(path, ELSEWHERE_M)
+
+    by_run: dict[Any, list[dict[str, Any]]] = {}
+    for edge in edges:
+        by_run.setdefault(edge.get("run"), []).append(edge)
+    away = sorted((run for run, records in by_run.items()
+                   if sum(1 for e in records if beyond(e)) > ELSEWHERE_RUN_FRACTION * len(records)),
+                  key=lambda run: (run is None, run))
+    if not away or len(away) == len(by_run):
+        return None
+
+    kept = copy.deepcopy(doc)
+    kept["edges"] = [e for e in kept["edges"] if e.get("run") not in away]
+    # A finish line crossed on the other circuit is not this one's finish line.
+    crossings = kept.get("finish_crossings") or []
+    kept["finish_crossings"] = [c for c in crossings if not beyond(c)]
+    elsewhere = copy.deepcopy(doc)
+    elsewhere["edges"] = [e for e in elsewhere["edges"] if e.get("run") in away]
+    return {
+        "runs": away,
+        "edges": len(elsewhere["edges"]),
+        "crossings": len(crossings) - len(kept["finish_crossings"]),
+        # The survey without them: what is merged once a person has agreed.
+        # `meta` still counts every run the logger drove; which source drove
+        # which is not recorded, so the count is left as the logger wrote it.
+        "kept": kept,
+        # Only they, under the same name: what `identify_layout` is asked
+        # about, to say where they were driven.
+        "elsewhere": elsewhere,
+    }
 
 
 # ── the auto-merge gate (spec §6) ──────────────────────────────────────────
@@ -1491,6 +1600,60 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
     quorum = int((ctx.policy.get("policy") or {}).get("manual_quorum", 2))
     gate_settings = ctx.policy.get("gate") or {}
 
+    # A survey with another circuit's laps in it is not merged as it stands.
+    # Until a person has looked, it is held and shown; once they have accepted
+    # the contributor's layout, those runs are left out and the rest goes on.
+    accepted = ctx.service.layout_decisions(official_id)
+    accepted_at = str(accepted[-1].get("decided_at", "")) if accepted else ""
+    mixed = [(i, found) for i, (_, doc) in enumerate(docs)
+             if (found := runs_elsewhere(doc, ctx.signatures)) is not None]
+    if mixed and not accepted_at:
+        index, found = mixed[0]
+        upload = docs[index][0]
+        where = identify_layout(found["elsewhere"], None, ctx.signatures)
+        if where["signature_official_id"] == official_id:
+            # Not on this layout's line and yet read as this layout: the
+            # reading has nothing to offer, and naming it would be nonsense.
+            where["signature_official_id"], where["signature_line"] = "", []
+        decisions = _decisions_by_cell(ctx.service.kind_decisions(official_id))
+        kinds = policy_kinds(found["kept"], accounts, quorum, decisions)["kinds"]
+        line = contributor_line(compile_geometry(compile_input(found["kept"], kinds, corrected),
+                                                 smoothing_for(ctx.policy, corrected)))
+        runs = ", ".join(str(run) for run in found["runs"])
+        summary = (f"the survey of {official_id} holds {len(found['runs'])} "
+                   f"run{'' if len(found['runs']) == 1 else 's'} driven elsewhere ({runs}); signatures.json "
+                   f"places {'it' if len(found['runs']) == 1 else 'them'} on "
+                   f"{where['signature_official_id'] or 'no configuration it knows'}")
+        merged_ids = [u["id"] for u, _ in docs]
+        _raise(ctx, outcome, type="layout_mismatch", official_id=official_id,
+               upload_id=upload["id"], user_id=upload["user_id"], summary=summary,
+               detail={
+                   "contributor_official_id": official_id,
+                   "signature_official_id": where["signature_official_id"],
+                   "candidates": where["candidates"],
+                   "heading_agree": where["heading_agree"],
+                   "heading_disagree": where["heading_disagree"],
+                   "runs_elsewhere": found["runs"],
+                   "records_elsewhere": found["edges"],
+                   "records_on_layout": len(found["kept"]["edges"]),
+                   "crossings_elsewhere": found["crossings"],
+                   "uploads": merged_ids,
+                   "contributor_line": line,
+                   "signature_line": thinned(where["signature_line"]),
+               },
+               trigger={"contributor": official_id, "signature": where["signature_official_id"],
+                        "runs_elsewhere": found["runs"]})
+        outcome.action = "held"
+        outcome.reason = summary
+        _report(ctx, merged_ids, "held", f"held for a layout check: {summary}")
+        return outcome
+    for index, found in mixed:
+        upload = docs[index][0]
+        ctx.log(f"  {upload['id']}: leaving out run(s) {', '.join(str(r) for r in found['runs'])} driven elsewhere "
+                f"({found['edges']} records, {found['crossings']} finish crossing(s)); "
+                f"layout accepted by the administrator at {accepted_at}")
+        docs[index] = (upload, found["kept"])
+
     merged = copy.deepcopy(existing) if existing else None
     for _, doc in docs:
         merged = merge_into(merged, doc) if merged is not None else copy.deepcopy(doc)
@@ -1527,8 +1690,6 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
 
     # Which layout the geometry says this is, and whether a person already answered.
     layout = identify_layout(merged, compiled_after, ctx.signatures)
-    accepted = ctx.service.layout_decisions(official_id)
-    accepted_at = str(accepted[-1].get("decided_at", "")) if accepted else ""
     if layout["agrees"] is False and not accepted_at:
         first_upload = docs[0][0]
         summary = (f"the contributor confirmed {layout['contributor_official_id']}; "
@@ -1544,7 +1705,7 @@ def process_track(ctx: Context, official_id: str, uploads: list[dict[str, Any]])
                    "centreline_length_m": layout["length_m"],
                    "uploads": merged_ids,
                    "contributor_line": contributor_line(compiled_after),
-                   "signature_line": layout["signature_line"][:LINE_POINTS],
+                   "signature_line": thinned(layout["signature_line"]),
                },
                trigger={"contributor": layout["contributor_official_id"],
                         "signature": layout["signature_official_id"]})
