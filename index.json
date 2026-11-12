@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 36,
-  "points": 167983,
-  "corners_labelled": 175,
+  "surveyed": 37,
+  "points": 171313,
+  "corners_labelled": 185,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -445,7 +445,21 @@
    "type": "original",
    "reverse": false,
    "slug": "blue-moon-bay-speedway-infield-a",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/blue-moon-bay-speedway-infield-a.json",
+    "track": "Blue Moon Bay Speedway - Infield A",
+    "points": 3330,
+    "manual_points": 3253,
+    "elevation_pct": 100.0,
+    "runs": 4,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 10,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-12T11:06:45.616429+00:00",
+    "bytes": 499342
+   }
   },
   {
    "official_id": "940193",
