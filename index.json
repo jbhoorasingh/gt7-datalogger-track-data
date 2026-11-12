@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 38,
-  "points": 175560,
-  "corners_labelled": 191,
+  "surveyed": 39,
+  "points": 180390,
+  "corners_labelled": 208,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1962,7 +1962,21 @@
    "type": "original",
    "reverse": false,
    "slug": "tokyo-expressway-south-clockwise",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/tokyo-expressway-south-clockwise.json",
+    "track": "Tokyo Expressway - South Clockwise",
+    "points": 4830,
+    "manual_points": 4805,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 17,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-12T15:49:26.061217+00:00",
+    "bytes": 729200
+   }
   },
   {
    "official_id": "5aeb53",
