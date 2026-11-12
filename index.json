@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 34,
-  "points": 156188,
+  "surveyed": 35,
+  "points": 163541,
   "corners_labelled": 166,
   "corrected": 9
  },
@@ -2048,7 +2048,21 @@
    "type": "real",
    "reverse": false,
    "slug": "watkins-glen-long-course",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/watkins-glen-long-course.json",
+    "track": "Watkins Glen Long Course",
+    "points": 7353,
+    "manual_points": 5312,
+    "elevation_pct": 100.0,
+    "runs": 5,
+    "sources": 1,
+    "finish_crossings": 6,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-11T15:20:17.347604+00:00",
+    "bytes": 1150346
+   }
   },
   {
    "official_id": "59f32b",
