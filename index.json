@@ -5,8 +5,8 @@
  "counts": {
   "configurations": 122,
   "surveyed": 35,
-  "points": 163541,
-  "corners_labelled": 166,
+  "points": 163691,
+  "corners_labelled": 175,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -265,17 +265,17 @@
     "file": "tracks/autodrome-lago-maggiore-east-end.json",
     "corrections": "corrections/autodrome-lago-maggiore-east-end.json",
     "track": "Autodrome Lago Maggiore - East End",
-    "points": 3144,
+    "points": 3294,
     "manual_points": 340,
-    "elevation_pct": 0.0,
-    "runs": 4,
-    "sources": 2,
-    "finish_crossings": 6,
-    "corners": 0,
+    "elevation_pct": 8.4,
+    "runs": 6,
+    "sources": 3,
+    "finish_crossings": 9,
+    "corners": 9,
     "sections": 0,
-    "sectors": 0,
-    "updated_at": "2026-09-15T22:21:59.792435+00:00",
-    "bytes": 545428
+    "sectors": 2,
+    "updated_at": "2026-11-11T12:55:05.844094+00:00",
+    "bytes": 573461
    }
   },
   {
