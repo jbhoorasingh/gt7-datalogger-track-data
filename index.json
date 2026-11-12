@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 39,
-  "points": 180390,
+  "surveyed": 40,
+  "points": 184471,
   "corners_labelled": 208,
   "corrected": 9
  },
@@ -2018,7 +2018,21 @@
    "type": "original",
    "reverse": false,
    "slug": "tokyo-expressway-central-counterclockwise",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/tokyo-expressway-central-counterclockwise.json",
+    "track": "Tokyo Expressway - Central Counterclockwise",
+    "points": 4081,
+    "manual_points": 4081,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 0,
+    "updated_at": "2026-11-12T16:31:37.644593+00:00",
+    "bytes": 614558
+   }
   },
   {
    "official_id": "802508",
