@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 37,
-  "points": 171313,
-  "corners_labelled": 185,
+  "surveyed": 38,
+  "points": 175560,
+  "corners_labelled": 191,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1289,7 +1289,21 @@
    "type": "original",
    "reverse": true,
    "slug": "high-speed-ring-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/high-speed-ring-reverse.json",
+    "track": "High Speed Ring (Reverse)",
+    "points": 4247,
+    "manual_points": 4174,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 6,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-12T11:38:02.971788+00:00",
+    "bytes": 641053
+   }
   },
   {
    "official_id": "6d5688",
