@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 41,
-  "points": 191166,
+  "surveyed": 42,
+  "points": 196795,
   "corners_labelled": 208,
   "corrected": 9
  },
@@ -1205,7 +1205,21 @@
    "type": "original",
    "reverse": false,
    "slug": "grand-valley-highway-1",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/grand-valley-highway-1.json",
+    "track": "Grand Valley - Highway 1",
+    "points": 5629,
+    "manual_points": 4895,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 0,
+    "updated_at": "2026-11-12T22:39:54.561166+00:00",
+    "bytes": 873640
+   }
   },
   {
    "official_id": "19fb71",
