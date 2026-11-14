@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 42,
-  "points": 197282,
-  "corners_labelled": 229,
+  "surveyed": 43,
+  "points": 200556,
+  "corners_labelled": 232,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -515,7 +515,21 @@
    "type": "original",
    "reverse": true,
    "slug": "blue-moon-bay-speedway-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/blue-moon-bay-speedway-reverse.json",
+    "track": "Blue Moon Bay Speedway (Reverse)",
+    "points": 3274,
+    "manual_points": 3273,
+    "elevation_pct": 100.0,
+    "runs": 3,
+    "sources": 1,
+    "finish_crossings": 3,
+    "corners": 3,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-13T12:04:01.380929+00:00",
+    "bytes": 488405
+   }
   },
   {
    "official_id": "02e205",
