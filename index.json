@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 44,
-  "points": 203333,
-  "corners_labelled": 237,
+  "surveyed": 45,
+  "points": 207551,
+  "corners_labelled": 250,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1527,7 +1527,21 @@
    "type": "real",
    "reverse": false,
    "slug": "michelin-raceway-road-atlanta",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/michelin-raceway-road-atlanta.json",
+    "track": "Michelin Raceway Road Atlanta",
+    "points": 4218,
+    "manual_points": 3687,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 13,
+    "sections": 1,
+    "sectors": 0,
+    "updated_at": "2026-11-13T19:00:54.279346+00:00",
+    "bytes": 649107
+   }
   },
   {
    "official_id": "ec1eb6",
