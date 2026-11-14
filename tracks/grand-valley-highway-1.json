@@ -5,7 +5,7 @@
   "track": "Grand Valley - Highway 1",
   "runs": 3,
   "source_runs": {"ee31b971390e":3},
-  "updated_at": "2026-11-12T22:39:54.561166+00:00",
+  "updated_at": "2026-11-13T11:08:50.224051+00:00",
   "official": {"track":"Grand Valley - Highway 1","layout":"Highway 1","official_id":"c2fd94","official_name":"Grand Valley - Highway 1","turns":18,"length_m":5099,"reverse":false}
  },
  "edges": [
@@ -5643,7 +5643,29 @@
   {"x":106.53,"z":959.782,"hx":-0.1248,"hz":0.99218,"lap":2},
   {"x":93.531,"z":957.922,"hx":-0.14283,"hz":0.98975,"lap":3}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Turn 1","direction":"R","apex":{"x":114.1,"z":1386.9},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Turn 2","direction":"L","apex":{"x":-132.3,"z":1139},"entry":null,"exit":null,"note":""},
+  {"n":3,"name":"Turn 3","direction":"R","apex":{"x":-344.2,"z":1043.4},"entry":null,"exit":null,"note":""},
+  {"n":4,"name":"Turn 4","direction":"L","apex":{"x":-436.9,"z":910.6},"entry":null,"exit":null,"note":""},
+  {"n":5,"name":"Turn 5","direction":"R","apex":{"x":-613.3,"z":724.7},"entry":null,"exit":null,"note":""},
+  {"n":6,"name":"Turn 6","direction":"L","apex":{"x":-389.7,"z":869.6},"entry":null,"exit":null,"note":""},
+  {"n":7,"name":"Turn 7","direction":"L","apex":{"x":-284.5,"z":832.3},"entry":null,"exit":null,"note":""},
+  {"n":8,"name":"Turn 8","direction":"R","apex":{"x":-279.6,"z":765.9},"entry":null,"exit":null,"note":""},
+  {"n":9,"name":"Turn 9","direction":"R","apex":{"x":-201.9,"z":686.6},"entry":null,"exit":null,"note":""},
+  {"n":10,"name":"Turn 10","direction":"L","apex":{"x":-114.4,"z":685},"entry":null,"exit":null,"note":""},
+  {"n":11,"name":"Turn 11","direction":"L","apex":{"x":-180.8,"z":328.6},"entry":null,"exit":null,"note":""},
+  {"n":12,"name":"Turn 12","direction":"R","apex":{"x":-330.6,"z":390.6},"entry":null,"exit":null,"note":""},
+  {"n":13,"name":"Turn 13","direction":"R","apex":{"x":-429.4,"z":-248.9},"entry":null,"exit":null,"note":""},
+  {"n":14,"name":"Turn 14","direction":"L","apex":{"x":-330.9,"z":-185.7},"entry":null,"exit":null,"note":""},
+  {"n":15,"name":"Turn 15","direction":"R","apex":{"x":-275,"z":-195.4},"entry":null,"exit":null,"note":""},
+  {"n":16,"name":"Turn 16 ","direction":"R","apex":{"x":-67.1,"z":-89.6},"entry":null,"exit":null,"note":""},
+  {"n":17,"name":"Turn 17","direction":"L","apex":{"x":26.9,"z":90.8},"entry":null,"exit":null,"note":""},
+  {"n":18,"name":"Turn 18","direction":"R","apex":{"x":156.6,"z":235},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
- "sectors": []
+ "sectors": [
+  {"n":1,"name":"","end":{"x":-480.7,"z":789.4}},
+  {"n":2,"name":"","end":{"x":-461.9,"z":-156}}
+ ]
 }
