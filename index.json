@@ -5,8 +5,8 @@
  "counts": {
   "configurations": 122,
   "surveyed": 42,
-  "points": 196795,
-  "corners_labelled": 226,
+  "points": 197282,
+  "corners_labelled": 229,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -490,17 +490,17 @@
    "bundle": {
     "file": "tracks/blue-moon-bay-speedway.json",
     "track": "Blue Moon Bay Speedway",
-    "points": 4292,
-    "manual_points": 4025,
+    "points": 4779,
+    "manual_points": 4512,
     "elevation_pct": 100.0,
-    "runs": 6,
+    "runs": 7,
     "sources": 1,
     "finish_crossings": 5,
-    "corners": 0,
+    "corners": 3,
     "sections": 0,
-    "sectors": 0,
-    "updated_at": "2026-11-11T22:47:26.114095+00:00",
-    "bytes": 640469
+    "sectors": 2,
+    "updated_at": "2026-11-13T11:39:23.748933+00:00",
+    "bytes": 712454
    }
   },
   {
