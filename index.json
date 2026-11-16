@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 46,
-  "points": 212809,
+  "surveyed": 47,
+  "points": 238308,
   "corners_labelled": 250,
   "corrected": 9
  },
@@ -1878,7 +1878,21 @@
    "type": "original",
    "reverse": false,
    "slug": "special-stage-route-x",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/special-stage-route-x.json",
+    "track": "Special Stage Route X",
+    "points": 25499,
+    "manual_points": 25499,
+    "elevation_pct": 100.0,
+    "runs": 4,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-15T22:29:50.737549+00:00",
+    "bytes": 3880043
+   }
   },
   {
    "official_id": "4bf61b",
