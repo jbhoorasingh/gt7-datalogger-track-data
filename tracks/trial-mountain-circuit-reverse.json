@@ -5,7 +5,7 @@
   "track": "Trial Mountain Circuit (Reverse)",
   "runs": 2,
   "source_runs": {"ee31b971390e":2},
-  "updated_at": "2026-11-14T21:46:14.425611+00:00",
+  "updated_at": "2026-11-16T07:53:05.998484+00:00",
   "official": {"track":"Trial Mountain Circuit","layout":"Full Course","official_id":"26514b","official_name":"Trial Mountain Circuit (Reverse)","turns":15,"length_m":5434,"reverse":true}
  },
  "edges": [
@@ -5272,7 +5272,23 @@
   {"x":143.137,"z":316.258,"hx":-0.99678,"hz":-0.08014,"lap":5},
   {"x":144.139,"z":300.171,"hx":-0.99724,"hz":-0.0742,"lap":6}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Turn 1","direction":"L","apex":{"x":-365.8,"z":285.4},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Turn 2","direction":"R","apex":{"x":-402,"z":363.1},"entry":null,"exit":null,"note":""},
+  {"n":3,"name":"Turn 3","direction":"R","apex":{"x":-829.3,"z":120.1},"entry":null,"exit":null,"note":""},
+  {"n":4,"name":"turn 4","direction":"L","apex":{"x":-612.8,"z":-55.5},"entry":null,"exit":null,"note":""},
+  {"n":5,"name":"Turn 5","direction":"R","apex":{"x":-684.9,"z":-145.2},"entry":null,"exit":null,"note":""},
+  {"n":6,"name":"Turn 6","direction":"L","apex":{"x":-740.7,"z":-204.5},"entry":null,"exit":null,"note":""},
+  {"n":7,"name":"Turn 7","direction":"R","apex":{"x":-958.2,"z":-354.6},"entry":null,"exit":null,"note":""},
+  {"n":8,"name":"Turn 8","direction":"R","apex":{"x":477.3,"z":-251.3},"entry":null,"exit":null,"note":""},
+  {"n":9,"name":"Turn 9","direction":"L","apex":{"x":475,"z":-21.9},"entry":null,"exit":null,"note":""},
+  {"n":10,"name":"Turn 10","direction":"R","apex":{"x":567,"z":17.7},"entry":null,"exit":null,"note":""},
+  {"n":11,"name":"Turn 11","direction":"L","apex":{"x":715.9,"z":82.8},"entry":null,"exit":null,"note":""},
+  {"n":12,"name":"Turn 12","direction":"R","apex":{"x":898.4,"z":-117.2},"entry":null,"exit":null,"note":""},
+  {"n":13,"name":"Turn 13 ","direction":"R","apex":{"x":904.2,"z":177.4},"entry":null,"exit":null,"note":""},
+  {"n":14,"name":"Turn 14","direction":"L","apex":{"x":747.1,"z":268.3},"entry":null,"exit":null,"note":""},
+  {"n":15,"name":"Turn 15","direction":"R","apex":{"x":649.3,"z":334.7},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
  "sectors": [
   {"n":1,"name":"","end":{"x":-847.8,"z":-246.8}},
