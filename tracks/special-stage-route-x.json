@@ -5,7 +5,7 @@
   "track": "Special Stage Route X",
   "runs": 4,
   "source_runs": {"ee31b971390e":4},
-  "updated_at": "2026-11-15T22:29:50.737549+00:00",
+  "updated_at": "2026-11-16T07:37:42.018542+00:00",
   "official": {"track":"Special Stage Route X","layout":"Full Course","official_id":"ef3232","official_name":"Special Stage Route X","turns":2,"length_m":30283,"reverse":false}
  },
  "edges": [
@@ -25513,7 +25513,10 @@
   {"x":-2812.857,"z":-4255.745,"hx":0.68778,"hz":0.72592,"lap":2},
   {"x":-2809.422,"z":-4261.039,"hx":0.70723,"hz":0.70698,"lap":2}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Highspeed Turn 1","direction":null,"apex":{"x":5031.2,"z":4895.1},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Highspeed Turn 2","direction":null,"apex":{"x":-4973,"z":-4932.2},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
  "sectors": [
   {"n":1,"name":"","end":{"x":4358.2,"z":2913.6}},
