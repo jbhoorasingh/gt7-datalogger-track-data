@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 49,
-  "points": 247176,
+  "surveyed": 50,
+  "points": 250209,
   "corners_labelled": 290,
   "corrected": 9
  },
@@ -1303,7 +1303,21 @@
    "type": "original",
    "reverse": false,
    "slug": "grand-valley-south",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/grand-valley-south.json",
+    "track": "Grand Valley - South",
+    "points": 3033,
+    "manual_points": 2936,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-16T16:10:49.271089+00:00",
+    "bytes": 462028
+   }
   },
   {
    "official_id": "b34920",
