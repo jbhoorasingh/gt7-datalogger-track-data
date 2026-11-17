@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 47,
-  "points": 238308,
-  "corners_labelled": 267,
+  "surveyed": 48,
+  "points": 242167,
+  "corners_labelled": 272,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -571,7 +571,21 @@
    "type": "original",
    "reverse": true,
    "slug": "blue-moon-bay-speedway-infield-b-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/blue-moon-bay-speedway-infield-b-reverse.json",
+    "track": "Blue Moon Bay Speedway - Infield B (Reverse)",
+    "points": 3859,
+    "manual_points": 3840,
+    "elevation_pct": 100.0,
+    "runs": 5,
+    "sources": 1,
+    "finish_crossings": 4,
+    "corners": 5,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-16T14:08:06.923305+00:00",
+    "bytes": 572471
+   }
   },
   {
    "official_id": "3f4c16",
