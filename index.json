@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 48,
-  "points": 242167,
-  "corners_labelled": 272,
+  "surveyed": 49,
+  "points": 247176,
+  "corners_labelled": 290,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1275,7 +1275,21 @@
    "type": "original",
    "reverse": true,
    "slug": "grand-valley-highway-1-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/grand-valley-highway-1-reverse.json",
+    "track": "Grand Valley - Highway 1 (Reverse)",
+    "points": 5009,
+    "manual_points": 4858,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 18,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-16T15:55:52.770509+00:00",
+    "bytes": 764266
+   }
   },
   {
    "official_id": "a8725d",
