@@ -6,7 +6,7 @@
   "configurations": 122,
   "surveyed": 47,
   "points": 238308,
-  "corners_labelled": 252,
+  "corners_labelled": 267,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -2168,11 +2168,11 @@
     "runs": 2,
     "sources": 1,
     "finish_crossings": 2,
-    "corners": 0,
+    "corners": 15,
     "sections": 0,
     "sectors": 2,
-    "updated_at": "2026-11-14T21:46:14.425611+00:00",
-    "bytes": 796582
+    "updated_at": "2026-11-16T07:53:05.998484+00:00",
+    "bytes": 798205
    }
   },
   {
