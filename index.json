@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 51,
-  "points": 253971,
-  "corners_labelled": 300,
+  "surveyed": 52,
+  "points": 256904,
+  "corners_labelled": 303,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1513,7 +1513,21 @@
    "type": "original",
    "reverse": false,
    "slug": "lake-louise-tri-oval",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/lake-louise-tri-oval.json",
+    "track": "Lake Louise Tri-Oval",
+    "points": 2933,
+    "manual_points": 2933,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 3,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-20T22:43:34.604919+00:00",
+    "bytes": 438609
+   }
   },
   {
    "official_id": "44b0a2",
