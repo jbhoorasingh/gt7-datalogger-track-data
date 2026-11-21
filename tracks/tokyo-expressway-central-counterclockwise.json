@@ -5,7 +5,7 @@
   "track": "Tokyo Expressway - Central Counterclockwise",
   "runs": 3,
   "source_runs": {"ee31b971390e":3},
-  "updated_at": "2026-11-12T16:31:37.644593+00:00",
+  "updated_at": "2026-11-20T22:58:14.478041+00:00",
   "official": {"track":"Tokyo Expressway","layout":"Central Counterclockwise","official_id":"dcdc93","official_name":"Tokyo Expressway - Central Counterclockwise","turns":14,"length_m":4369,"reverse":false}
  },
  "edges": [
@@ -4096,7 +4096,22 @@
   {"x":-53.946,"z":815.636,"hx":0.99247,"hz":0.12251,"lap":6},
   {"x":-52.973,"z":808.611,"hx":0.99244,"hz":0.12269,"lap":7}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Turn 1","direction":"L","apex":{"x":187.1,"z":786},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Turn 2","direction":"L","apex":{"x":217.5,"z":629.8},"entry":null,"exit":null,"note":""},
+  {"n":3,"name":"Turn 3","direction":"R","apex":{"x":180.5,"z":500.1},"entry":null,"exit":null,"note":""},
+  {"n":4,"name":"Turn 4","direction":"R","apex":{"x":371.7,"z":172.6},"entry":null,"exit":null,"note":""},
+  {"n":5,"name":"Turn 5","direction":"L","apex":{"x":593.8,"z":-2.7},"entry":null,"exit":null,"note":""},
+  {"n":6,"name":"Turn 6","direction":"R","apex":{"x":644.6,"z":-97.9},"entry":null,"exit":null,"note":""},
+  {"n":7,"name":"Turn 7","direction":"L","apex":{"x":703.7,"z":-249.4},"entry":null,"exit":null,"note":""},
+  {"n":8,"name":"Turn 8","direction":"L","apex":{"x":606.7,"z":-422.1},"entry":null,"exit":null,"note":""},
+  {"n":9,"name":"Turn 9","direction":"L","apex":{"x":-140.2,"z":-442.9},"entry":null,"exit":null,"note":""},
+  {"n":10,"name":"Turn 10","direction":"R","apex":{"x":-450.6,"z":147.5},"entry":null,"exit":null,"note":""},
+  {"n":11,"name":"Turn 11","direction":"L","apex":{"x":-624.4,"z":403.2},"entry":null,"exit":null,"note":""},
+  {"n":12,"name":"Turn 12","direction":"L","apex":{"x":-507.8,"z":727.6},"entry":null,"exit":null,"note":""},
+  {"n":13,"name":"Turn 13","direction":"R","apex":{"x":-312.9,"z":772.2},"entry":null,"exit":null,"note":""},
+  {"n":14,"name":"Turn 14","direction":"L","apex":{"x":-148.5,"z":790.3},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
  "sectors": []
 }
