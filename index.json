@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 50,
-  "points": 250209,
-  "corners_labelled": 290,
+  "surveyed": 51,
+  "points": 253971,
+  "corners_labelled": 300,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -2342,7 +2342,21 @@
    "type": "real",
    "reverse": false,
    "slug": "willow-springs-international-raceway-big-willow",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/willow-springs-international-raceway-big-willow.json",
+    "track": "Willow Springs International Raceway: Big Willow",
+    "points": 3762,
+    "manual_points": 3752,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 10,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-20T18:34:40.468558+00:00",
+    "bytes": 571619
+   }
   },
   {
    "official_id": "1d6a80",
