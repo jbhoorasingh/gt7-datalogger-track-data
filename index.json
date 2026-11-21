@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 52,
-  "points": 256904,
-  "corners_labelled": 317,
+  "surveyed": 53,
+  "points": 259487,
+  "corners_labelled": 324,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1555,7 +1555,21 @@
    "type": "original",
    "reverse": false,
    "slug": "lake-louise-short-track",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/lake-louise-short-track.json",
+    "track": "Lake Louise Short Track",
+    "points": 2583,
+    "manual_points": 2583,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 7,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-21T00:40:39.847453+00:00",
+    "bytes": 390243
+   }
   },
   {
    "official_id": "96dc0c",
