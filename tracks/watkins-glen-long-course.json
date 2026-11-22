@@ -5,7 +5,7 @@
   "track": "Watkins Glen Long Course",
   "runs": 5,
   "source_runs": {"ee31b971390e":5},
-  "updated_at": "2026-11-11T15:20:17.347604+00:00",
+  "updated_at": "2026-11-21T22:43:15.138870+00:00",
   "official": {"track":"Watkins Glen International","layout":"Long Course","official_id":"60d74b","official_name":"Watkins Glen Long Course","turns":11,"length_m":5423,"reverse":false}
  },
  "edges": [
@@ -7371,7 +7371,23 @@
   {"x":-341.129,"z":-517.31,"hx":0.08302,"hz":-0.99655,"lap":5},
   {"x":-332.592,"z":-516.884,"hx":0.06545,"hz":-0.99786,"lap":6}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Turn 1","direction":"R","apex":{"x":-293.8,"z":-863.3},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Turn 2","direction":"R","apex":{"x":59.3,"z":-759},"entry":null,"exit":null,"note":""},
+  {"n":3,"name":"Turn 3","direction":"L","apex":{"x":139,"z":-545.1},"entry":null,"exit":null,"note":""},
+  {"n":4,"name":"Turn 4","direction":"R","apex":{"x":285.1,"z":-357.7},"entry":null,"exit":null,"note":""},
+  {"n":5,"name":"Turn 5","direction":"R","apex":{"x":339.6,"z":308.7},"entry":null,"exit":null,"note":""},
+  {"n":6,"name":"Turn 6","direction":"L","apex":{"x":327.9,"z":356.5},"entry":null,"exit":null,"note":""},
+  {"n":7,"name":"Turn 7","direction":"L","apex":{"x":331.5,"z":436},"entry":null,"exit":null,"note":""},
+  {"n":8,"name":"Turn 8","direction":"R","apex":{"x":350,"z":480.5},"entry":null,"exit":null,"note":""},
+  {"n":9,"name":"Turn 9","direction":"R","apex":{"x":268.2,"z":668.5},"entry":null,"exit":null,"note":""},
+  {"n":10,"name":"Turn 10","direction":"L","apex":{"x":-85.9,"z":436.2},"entry":null,"exit":null,"note":""},
+  {"n":11,"name":"Turn 11","direction":"R","apex":{"x":-185,"z":868.1},"entry":null,"exit":null,"note":""},
+  {"n":12,"name":"Turn 12","direction":"R","apex":{"x":-272.1,"z":236.1},"entry":null,"exit":null,"note":""},
+  {"n":13,"name":"Turn 13","direction":"L","apex":{"x":24.5,"z":296.5},"entry":null,"exit":null,"note":""},
+  {"n":14,"name":"Turn 14","direction":"L","apex":{"x":-39.2,"z":-59.1},"entry":null,"exit":null,"note":""},
+  {"n":15,"name":"Turn 15","direction":"R","apex":{"x":-341.8,"z":-143.7},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
  "sectors": [
   {"n":1,"name":"","end":{"x":354.1,"z":260.4}},
