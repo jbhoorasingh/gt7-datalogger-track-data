@@ -5,7 +5,7 @@
   "track": "Grand Valley - South",
   "runs": 2,
   "source_runs": {"ee31b971390e":2},
-  "updated_at": "2026-11-16T16:10:49.271089+00:00",
+  "updated_at": "2026-11-21T22:17:21.034393+00:00",
   "official": {"track":"Grand Valley - Highway 1","layout":"South","official_id":"a8725d","official_name":"Grand Valley - South","turns":10,"length_m":3076,"reverse":false}
  },
  "edges": [
@@ -3047,7 +3047,18 @@
   {"x":106.004,"z":959.66,"hx":-0.13582,"hz":0.99073,"lap":3},
   {"x":93.446,"z":958.02,"hx":-0.12708,"hz":0.99189,"lap":4}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Turn 1","direction":"R","apex":{"x":106.3,"z":1375.6},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Turn 2","direction":"L","apex":{"x":-142,"z":1064.8},"entry":null,"exit":null,"note":""},
+  {"n":3,"name":"Turn 3","direction":"R","apex":{"x":-280.6,"z":935.3},"entry":null,"exit":null,"note":""},
+  {"n":4,"name":"Turn 4","direction":"R","apex":{"x":-276.4,"z":751.6},"entry":null,"exit":null,"note":""},
+  {"n":5,"name":"Turn 5","direction":"R","apex":{"x":-194.1,"z":675.8},"entry":null,"exit":null,"note":""},
+  {"n":6,"name":"Turn 6","direction":"L","apex":{"x":-125.8,"z":680.6},"entry":null,"exit":null,"note":""},
+  {"n":7,"name":"Turn 7","direction":"R","apex":{"x":-113.9,"z":314.3},"entry":null,"exit":null,"note":""},
+  {"n":8,"name":"Turn 8","direction":"L","apex":{"x":-30.8,"z":260.9},"entry":null,"exit":null,"note":""},
+  {"n":9,"name":"Turn 9","direction":"R","apex":{"x":52.8,"z":138.5},"entry":null,"exit":null,"note":""},
+  {"n":10,"name":"Turn 10","direction":"R","apex":{"x":162.5,"z":267.8},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
  "sectors": [
   {"n":1,"name":"","end":{"x":-240.8,"z":1001.6}},
