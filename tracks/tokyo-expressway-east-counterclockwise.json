@@ -5,7 +5,7 @@
   "track": "Tokyo Expressway - East Counterclockwise",
   "runs": 3,
   "source_runs": {"ee31b971390e":3},
-  "updated_at": "2026-11-12T17:36:11.279239+00:00",
+  "updated_at": "2026-11-23T08:37:28.667989+00:00",
   "official": {"track":"Tokyo Expressway","layout":"East Counterclockwise","official_id":"fd9a21","official_name":"Tokyo Expressway - East Counterclockwise","turns":13,"length_m":7192,"reverse":false}
  },
  "edges": [
@@ -6711,7 +6711,21 @@
   {"x":0.132,"z":-116.49,"hx":-0.99718,"hz":0.07502,"lap":3},
   {"x":1.025,"z":-105.727,"hx":-0.99708,"hz":0.07635,"lap":4}
  ],
- "corners": [],
+ "corners": [
+  {"n":1,"name":"Turn 1","direction":"R","apex":{"x":-1464.3,"z":-39.9},"entry":null,"exit":null,"note":""},
+  {"n":2,"name":"Turn 2","direction":"R","apex":{"x":-1477.5,"z":-84.8},"entry":null,"exit":null,"note":""},
+  {"n":3,"name":"Turn 3","direction":"R","apex":{"x":-594.5,"z":-87.4},"entry":null,"exit":null,"note":""},
+  {"n":4,"name":"Turn 4","direction":"L","apex":{"x":-487.8,"z":84.5},"entry":null,"exit":null,"note":""},
+  {"n":5,"name":"Turn 5","direction":"R","apex":{"x":-43.6,"z":209.7},"entry":null,"exit":null,"note":""},
+  {"n":6,"name":"Turn 6","direction":"L","apex":{"x":144.9,"z":446.3},"entry":null,"exit":null,"note":""},
+  {"n":7,"name":"Turn 7","direction":"L","apex":{"x":342.5,"z":493.2},"entry":null,"exit":null,"note":""},
+  {"n":8,"name":"Turn 8","direction":"L","apex":{"x":626.8,"z":411.4},"entry":null,"exit":null,"note":""},
+  {"n":9,"name":"turn 9","direction":"R","apex":{"x":687.8,"z":337.1},"entry":null,"exit":null,"note":""},
+  {"n":10,"name":"Turn 10","direction":"L","apex":{"x":955.8,"z":203.1},"entry":null,"exit":null,"note":""},
+  {"n":11,"name":"Turn 11","direction":"R","apex":{"x":1165.7,"z":-64.9},"entry":null,"exit":null,"note":""},
+  {"n":12,"name":"Turn 12","direction":"L","apex":{"x":1750.9,"z":-175.4},"entry":null,"exit":null,"note":""},
+  {"n":13,"name":"Turn 13","direction":"L","apex":{"x":1755,"z":-306.3},"entry":null,"exit":null,"note":""}
+ ],
  "sections": [],
  "sectors": []
 }
