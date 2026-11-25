@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 53,
-  "points": 259487,
-  "corners_labelled": 362,
+  "surveyed": 54,
+  "points": 262589,
+  "corners_labelled": 372,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1331,7 +1331,21 @@
    "type": "original",
    "reverse": true,
    "slug": "grand-valley-south-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/grand-valley-south-reverse.json",
+    "track": "Grand Valley - South (Reverse)",
+    "points": 3102,
+    "manual_points": 2949,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 10,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-24T14:31:01.117309+00:00",
+    "bytes": 473384
+   }
   },
   {
    "official_id": "65e108",
