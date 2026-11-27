@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 55,
-  "points": 265085,
-  "corners_labelled": 386,
+  "surveyed": 56,
+  "points": 266676,
+  "corners_labelled": 397,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -2482,7 +2482,21 @@
    "type": "real",
    "reverse": true,
    "slug": "willow-springs-international-raceway-horse-thief-mile-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/willow-springs-international-raceway-horse-thief-mile-reverse.json",
+    "track": "Willow Springs International Raceway: Horse Thief Mile (Reverse)",
+    "points": 1591,
+    "manual_points": 1585,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 11,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-26T12:14:38.983195+00:00",
+    "bytes": 242133
+   }
   },
   {
    "official_id": "d3bd76",
