@@ -4,9 +4,9 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 56,
-  "points": 266676,
-  "corners_labelled": 397,
+  "surveyed": 57,
+  "points": 269153,
+  "corners_labelled": 404,
   "corrected": 9
  },
  "unmatched_bundles": [],
@@ -1597,7 +1597,21 @@
    "type": "original",
    "reverse": true,
    "slug": "lake-louise-short-track-reverse",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/lake-louise-short-track-reverse.json",
+    "track": "Lake Louise Short Track (Reverse)",
+    "points": 2477,
+    "manual_points": 2477,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 7,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-26T14:20:36.710692+00:00",
+    "bytes": 375424
+   }
   },
   {
    "official_id": "da093f",
