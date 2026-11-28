@@ -4,8 +4,8 @@
  "bundle_format_version": 5,
  "counts": {
   "configurations": 122,
-  "surveyed": 57,
-  "points": 269153,
+  "surveyed": 58,
+  "points": 272003,
   "corners_labelled": 404,
   "corrected": 9
  },
@@ -923,7 +923,21 @@
    "type": "original",
    "reverse": false,
    "slug": "colorado-springs-lake",
-   "bundle": null
+   "bundle": {
+    "file": "tracks/colorado-springs-lake.json",
+    "track": "Colorado Springs - Lake",
+    "points": 2850,
+    "manual_points": 2850,
+    "elevation_pct": 100.0,
+    "runs": 2,
+    "sources": 1,
+    "finish_crossings": 2,
+    "corners": 0,
+    "sections": 0,
+    "sectors": 2,
+    "updated_at": "2026-11-27T23:04:57.601931+00:00",
+    "bytes": 431059
+   }
   },
   {
    "official_id": "46d3f1",
